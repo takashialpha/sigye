@@ -3,6 +3,57 @@
 use ratatui::style::Color;
 use serde::{Deserialize, Serialize};
 
+/// Display mode for the application.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DisplayMode {
+    #[default]
+    Clock,
+    Pomodoro,
+}
+
+impl DisplayMode {
+    /// Toggle between display modes.
+    pub fn toggle(&self) -> Self {
+        match self {
+            DisplayMode::Clock => DisplayMode::Pomodoro,
+            DisplayMode::Pomodoro => DisplayMode::Clock,
+        }
+    }
+
+    /// Get display name for the mode.
+    pub fn display_name(self) -> &'static str {
+        match self {
+            DisplayMode::Clock => "Clock",
+            DisplayMode::Pomodoro => "Pomodoro",
+        }
+    }
+}
+
+/// Pomodoro timer phase.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PomodoroPhase {
+    #[default]
+    Work,
+    ShortBreak,
+    LongBreak,
+}
+
+impl PomodoroPhase {
+    /// Get display name for the phase.
+    pub fn display_name(self) -> &'static str {
+        match self {
+            PomodoroPhase::Work => "WORK",
+            PomodoroPhase::ShortBreak => "BREAK",
+            PomodoroPhase::LongBreak => "LONG BREAK",
+        }
+    }
+
+    /// Check if this is a break phase.
+    pub fn is_break(self) -> bool {
+        matches!(self, PomodoroPhase::ShortBreak | PomodoroPhase::LongBreak)
+    }
+}
+
 /// System resource metrics for reactive backgrounds.
 ///
 /// All values are normalized to the range 0.0 - 1.0.

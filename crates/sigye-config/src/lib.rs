@@ -45,6 +45,22 @@ pub struct Config {
     /// Whether to show seconds in the clock display.
     #[serde(default = "default_show_seconds")]
     pub show_seconds: bool,
+
+    /// Pomodoro work duration in minutes.
+    #[serde(default = "default_pomodoro_work_mins")]
+    pub pomodoro_work_mins: u32,
+
+    /// Pomodoro short break duration in minutes.
+    #[serde(default = "default_pomodoro_break_mins")]
+    pub pomodoro_break_mins: u32,
+
+    /// Pomodoro long break duration in minutes.
+    #[serde(default = "default_pomodoro_long_break_mins")]
+    pub pomodoro_long_break_mins: u32,
+
+    /// Number of work sessions before a long break.
+    #[serde(default = "default_pomodoro_sessions_until_long")]
+    pub pomodoro_sessions_until_long: u32,
 }
 
 fn default_font() -> String {
@@ -53,6 +69,22 @@ fn default_font() -> String {
 
 fn default_show_seconds() -> bool {
     true
+}
+
+fn default_pomodoro_work_mins() -> u32 {
+    25
+}
+
+fn default_pomodoro_break_mins() -> u32 {
+    5
+}
+
+fn default_pomodoro_long_break_mins() -> u32 {
+    15
+}
+
+fn default_pomodoro_sessions_until_long() -> u32 {
+    4
 }
 
 impl Default for Config {
@@ -67,6 +99,10 @@ impl Default for Config {
             background_style: BackgroundStyle::default(),
             weather_location: String::new(),
             show_seconds: default_show_seconds(),
+            pomodoro_work_mins: default_pomodoro_work_mins(),
+            pomodoro_break_mins: default_pomodoro_break_mins(),
+            pomodoro_long_break_mins: default_pomodoro_long_break_mins(),
+            pomodoro_sessions_until_long: default_pomodoro_sessions_until_long(),
         }
     }
 }

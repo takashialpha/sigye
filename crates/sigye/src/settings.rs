@@ -21,6 +21,9 @@ pub enum SettingsField {
     Speed,
     Background,
     ColonBlink,
+    PomodoroWork,
+    PomodoroBreak,
+    PomodoroLongBreak,
 }
 
 impl SettingsField {
@@ -34,14 +37,17 @@ impl SettingsField {
             Self::Animation => Self::Speed,
             Self::Speed => Self::Background,
             Self::Background => Self::ColonBlink,
-            Self::ColonBlink => Self::Font,
+            Self::ColonBlink => Self::PomodoroWork,
+            Self::PomodoroWork => Self::PomodoroBreak,
+            Self::PomodoroBreak => Self::PomodoroLongBreak,
+            Self::PomodoroLongBreak => Self::Font,
         }
     }
 
     /// Move to the previous field.
     pub fn prev(self) -> Self {
         match self {
-            Self::Font => Self::ColonBlink,
+            Self::Font => Self::PomodoroLongBreak,
             Self::Color => Self::Font,
             Self::TimeFormat => Self::Color,
             Self::ShowSeconds => Self::TimeFormat,
@@ -49,6 +55,9 @@ impl SettingsField {
             Self::Speed => Self::Animation,
             Self::Background => Self::Speed,
             Self::ColonBlink => Self::Background,
+            Self::PomodoroWork => Self::ColonBlink,
+            Self::PomodoroBreak => Self::PomodoroWork,
+            Self::PomodoroLongBreak => Self::PomodoroBreak,
         }
     }
 }
@@ -78,6 +87,12 @@ pub struct SettingsDialog {
     pub colon_blink: bool,
     /// Current show seconds setting.
     pub show_seconds: bool,
+    /// Pomodoro work duration in minutes.
+    pub pomodoro_work_mins: u32,
+    /// Pomodoro break duration in minutes.
+    pub pomodoro_break_mins: u32,
+    /// Pomodoro long break duration in minutes.
+    pub pomodoro_long_break_mins: u32,
     /// Original font index (for cancel/revert).
     original_font_index: usize,
     /// Original color theme (for cancel/revert).
@@ -94,6 +109,12 @@ pub struct SettingsDialog {
     original_colon_blink: bool,
     /// Original show seconds (for cancel/revert).
     original_show_seconds: bool,
+    /// Original pomodoro work duration (for cancel/revert).
+    original_pomodoro_work_mins: u32,
+    /// Original pomodoro break duration (for cancel/revert).
+    original_pomodoro_break_mins: u32,
+    /// Original pomodoro long break duration (for cancel/revert).
+    original_pomodoro_long_break_mins: u32,
 }
 
 impl SettingsDialog {
@@ -111,6 +132,9 @@ impl SettingsDialog {
             background_style: BackgroundStyle::default(),
             colon_blink: false,
             show_seconds: true,
+            pomodoro_work_mins: 25,
+            pomodoro_break_mins: 5,
+            pomodoro_long_break_mins: 15,
             original_font_index: 0,
             original_color_theme: ColorTheme::default(),
             original_time_format: TimeFormat::default(),
@@ -119,10 +143,14 @@ impl SettingsDialog {
             original_background_style: BackgroundStyle::default(),
             original_colon_blink: false,
             original_show_seconds: true,
+            original_pomodoro_work_mins: 25,
+            original_pomodoro_break_mins: 5,
+            original_pomodoro_long_break_mins: 15,
         }
     }
 
     /// Open dialog with current settings.
+    #[allow(clippy::too_many_arguments)]
     pub fn open(
         &mut self,
         font_name: &str,
@@ -133,6 +161,9 @@ impl SettingsDialog {
         colon_blink: bool,
         show_seconds: bool,
         background_style: BackgroundStyle,
+        pomodoro_work_mins: u32,
+        pomodoro_break_mins: u32,
+        pomodoro_long_break_mins: u32,
     ) {
         self.visible = true;
         self.selected_field = SettingsField::default();
@@ -143,6 +174,9 @@ impl SettingsDialog {
         self.background_style = background_style;
         self.colon_blink = colon_blink;
         self.show_seconds = show_seconds;
+        self.pomodoro_work_mins = pomodoro_work_mins;
+        self.pomodoro_break_mins = pomodoro_break_mins;
+        self.pomodoro_long_break_mins = pomodoro_long_break_mins;
 
         // Find font index
         self.font_index = self
@@ -160,6 +194,9 @@ impl SettingsDialog {
         self.original_background_style = background_style;
         self.original_colon_blink = colon_blink;
         self.original_show_seconds = show_seconds;
+        self.original_pomodoro_work_mins = pomodoro_work_mins;
+        self.original_pomodoro_break_mins = pomodoro_break_mins;
+        self.original_pomodoro_long_break_mins = pomodoro_long_break_mins;
     }
 
     /// Close without saving.
@@ -210,6 +247,21 @@ impl SettingsDialog {
         self.original_background_style
     }
 
+    /// Get original pomodoro work duration (for reverting on cancel).
+    pub fn original_pomodoro_work_mins(&self) -> u32 {
+        self.original_pomodoro_work_mins
+    }
+
+    /// Get original pomodoro break duration (for reverting on cancel).
+    pub fn original_pomodoro_break_mins(&self) -> u32 {
+        self.original_pomodoro_break_mins
+    }
+
+    /// Get original pomodoro long break duration (for reverting on cancel).
+    pub fn original_pomodoro_long_break_mins(&self) -> u32 {
+        self.original_pomodoro_long_break_mins
+    }
+
     /// Move to next field.
     pub fn next_field(&mut self) {
         self.selected_field = self.selected_field.next();
@@ -249,6 +301,36 @@ impl SettingsDialog {
             SettingsField::ColonBlink => {
                 self.colon_blink = !self.colon_blink;
             }
+            SettingsField::PomodoroWork => {
+                // Cycle through common work durations: 15, 20, 25, 30, 45, 50, 60
+                self.pomodoro_work_mins = match self.pomodoro_work_mins {
+                    15 => 20,
+                    20 => 25,
+                    25 => 30,
+                    30 => 45,
+                    45 => 50,
+                    50 => 60,
+                    _ => 15,
+                };
+            }
+            SettingsField::PomodoroBreak => {
+                // Cycle through common break durations: 3, 5, 10, 15
+                self.pomodoro_break_mins = match self.pomodoro_break_mins {
+                    3 => 5,
+                    5 => 10,
+                    10 => 15,
+                    _ => 3,
+                };
+            }
+            SettingsField::PomodoroLongBreak => {
+                // Cycle through common long break durations: 10, 15, 20, 30
+                self.pomodoro_long_break_mins = match self.pomodoro_long_break_mins {
+                    10 => 15,
+                    15 => 20,
+                    20 => 30,
+                    _ => 10,
+                };
+            }
         }
     }
 
@@ -285,6 +367,39 @@ impl SettingsDialog {
             SettingsField::ColonBlink => {
                 self.colon_blink = !self.colon_blink;
             }
+            SettingsField::PomodoroWork => {
+                // Cycle through common work durations (reverse): 60, 50, 45, 30, 25, 20, 15
+                self.pomodoro_work_mins = match self.pomodoro_work_mins {
+                    15 => 60,
+                    20 => 15,
+                    25 => 20,
+                    30 => 25,
+                    45 => 30,
+                    50 => 45,
+                    60 => 50,
+                    _ => 25,
+                };
+            }
+            SettingsField::PomodoroBreak => {
+                // Cycle through common break durations (reverse): 15, 10, 5, 3
+                self.pomodoro_break_mins = match self.pomodoro_break_mins {
+                    3 => 15,
+                    5 => 3,
+                    10 => 5,
+                    15 => 10,
+                    _ => 5,
+                };
+            }
+            SettingsField::PomodoroLongBreak => {
+                // Cycle through common long break durations (reverse): 30, 20, 15, 10
+                self.pomodoro_long_break_mins = match self.pomodoro_long_break_mins {
+                    10 => 30,
+                    15 => 10,
+                    20 => 15,
+                    30 => 20,
+                    _ => 15,
+                };
+            }
         }
     }
 
@@ -304,7 +419,7 @@ impl SettingsDialog {
 
         // Calculate centered dialog area
         let dialog_width = 40.min(area.width.saturating_sub(4));
-        let dialog_height = 21.min(area.height.saturating_sub(2));
+        let dialog_height = 27.min(area.height.saturating_sub(2)); // Increased for pomodoro fields
 
         let dialog_x = area.x + (area.width.saturating_sub(dialog_width)) / 2;
         let dialog_y = area.y + (area.height.saturating_sub(dialog_height)) / 2;
@@ -342,8 +457,14 @@ impl SettingsDialog {
             Constraint::Length(1), // 13: Background
             Constraint::Length(1), // 14: Spacing
             Constraint::Length(1), // 15: Colon Blink
-            Constraint::Fill(1),   // 16: Bottom space
-            Constraint::Length(1), // 17: Help text
+            Constraint::Length(1), // 16: Spacing
+            Constraint::Length(1), // 17: Pomodoro Work
+            Constraint::Length(1), // 18: Spacing
+            Constraint::Length(1), // 19: Pomodoro Break
+            Constraint::Length(1), // 20: Spacing
+            Constraint::Length(1), // 21: Pomodoro Long Break
+            Constraint::Fill(1),   // 22: Bottom space
+            Constraint::Length(1), // 23: Help text
         ])
         .split(inner_area);
 
@@ -450,6 +571,45 @@ impl SettingsDialog {
             chunks[15],
         );
 
+        // Render pomodoro work duration field
+        let work_value = format!("{} min", self.pomodoro_work_mins);
+        let work_line = self.render_field(
+            "Pomo Work",
+            &work_value,
+            self.selected_field == SettingsField::PomodoroWork,
+            accent_color,
+        );
+        frame.render_widget(
+            Paragraph::new(work_line).alignment(Alignment::Center),
+            chunks[17],
+        );
+
+        // Render pomodoro break duration field
+        let break_value = format!("{} min", self.pomodoro_break_mins);
+        let break_line = self.render_field(
+            "Pomo Break",
+            &break_value,
+            self.selected_field == SettingsField::PomodoroBreak,
+            accent_color,
+        );
+        frame.render_widget(
+            Paragraph::new(break_line).alignment(Alignment::Center),
+            chunks[19],
+        );
+
+        // Render pomodoro long break duration field
+        let long_break_value = format!("{} min", self.pomodoro_long_break_mins);
+        let long_break_line = self.render_field(
+            "Pomo Long",
+            &long_break_value,
+            self.selected_field == SettingsField::PomodoroLongBreak,
+            accent_color,
+        );
+        frame.render_widget(
+            Paragraph::new(long_break_line).alignment(Alignment::Center),
+            chunks[21],
+        );
+
         // Render help text
         let help = Line::from(vec![
             Span::styled("↑↓", Style::default().fg(accent_color).bold()),
@@ -463,7 +623,7 @@ impl SettingsDialog {
         ]);
         frame.render_widget(
             Paragraph::new(help).alignment(Alignment::Center),
-            chunks[17],
+            chunks[23],
         );
     }
 

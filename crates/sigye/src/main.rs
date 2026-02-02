@@ -11,13 +11,13 @@ use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifier
 use ratatui::{
     DefaultTerminal, Frame,
     layout::{Constraint, Layout, Position},
-    style::Stylize,
+    style::{Color, Stylize},
     text::Line,
 };
 use sigye_config::Config;
 use sigye_core::{
-    AnimationSpeed, AnimationStyle, BackgroundStyle, ColorTheme, TimeFormat, apply_animation,
-    is_colon_visible,
+    AnimationSpeed, AnimationStyle, BackgroundStyle, ColorTheme, DisplayMode, PomodoroPhase,
+    TimeFormat, apply_animation, is_colon_visible,
 };
 use sigye_fonts::FontRegistry;
 
@@ -78,6 +78,18 @@ pub struct App {
     system_monitor: Option<SystemMonitor>,
     /// Weather monitor for dynamic weather background (lazy initialized).
     weather_monitor: Option<WeatherMonitor>,
+    /// Current display mode (Clock or Pomodoro).
+    display_mode: DisplayMode,
+    /// Current pomodoro phase.
+    pomodoro_phase: PomodoroPhase,
+    /// Remaining seconds in pomodoro timer.
+    pomodoro_remaining_secs: u32,
+    /// Number of completed work sessions.
+    pomodoro_sessions_completed: u32,
+    /// Last tick time for pomodoro timer.
+    pomodoro_last_tick: Instant,
+    /// Whether pomodoro timer is running.
+    pomodoro_running: bool,
 }
 
 impl App {
@@ -123,6 +135,9 @@ impl App {
             None
         };
 
+        // Capture pomodoro work duration before config is moved
+        let pomodoro_initial_secs = config.pomodoro_work_mins * 60;
+
         Self {
             running: false,
             time_format: config.time_format,
@@ -145,6 +160,12 @@ impl App {
             background_state: BackgroundState::new(),
             system_monitor,
             weather_monitor,
+            display_mode: DisplayMode::default(),
+            pomodoro_phase: PomodoroPhase::default(),
+            pomodoro_remaining_secs: pomodoro_initial_secs,
+            pomodoro_sessions_completed: 0,
+            pomodoro_last_tick: Instant::now(),
+            pomodoro_running: false,
         }
     }
 
@@ -187,8 +208,23 @@ impl App {
             metrics.as_ref(),
         );
 
-        // Update flash intensity for reactive animation
-        self.update_flash(&now);
+        // Update flash intensity for reactive animation (clock mode only)
+        if self.display_mode == DisplayMode::Clock {
+            self.update_flash(&now);
+        }
+
+        // Update pomodoro timer
+        self.update_pomodoro();
+
+        // Branch rendering based on display mode
+        if self.display_mode == DisplayMode::Pomodoro {
+            self.render_pomodoro(frame, elapsed_ms);
+            // Render settings dialog if visible
+            let color = self.color_theme.color();
+            let area = frame.area();
+            self.settings_dialog.render(frame, area, color);
+            return;
+        }
 
         // Get time components
         let (hours, is_pm) = match self.time_format {
@@ -370,18 +406,16 @@ impl App {
             }
         }
 
-        // Render help text
+        // Render help text (clock mode)
         let help = Line::from(vec![
             "q".bold().fg(color),
             " quit  ".dark_gray(),
+            "m".bold().fg(color),
+            " pomodoro  ".dark_gray(),
             "t".bold().fg(color),
             " 12/24h  ".dark_gray(),
             "c".bold().fg(color),
             " color  ".dark_gray(),
-            "a".bold().fg(color),
-            " anim  ".dark_gray(),
-            "b".bold().fg(color),
-            " bg  ".dark_gray(),
             "s".bold().fg(color),
             " settings".dark_gray(),
         ])
@@ -390,6 +424,161 @@ impl App {
 
         // Render settings dialog if visible
         self.settings_dialog.render(frame, area, color);
+    }
+
+    /// Render the pomodoro timer display.
+    fn render_pomodoro(&mut self, frame: &mut Frame, elapsed_ms: u64) {
+        let color = self.color_theme.color();
+        let area = frame.area();
+
+        // Format time as MM:SS
+        let mins = self.pomodoro_remaining_secs / 60;
+        let secs = self.pomodoro_remaining_secs % 60;
+        let time_str = format!("{mins:02}:{secs:02}");
+
+        // Get current font and render
+        let font = self.font_registry.get_or_default(&self.current_font);
+        let time_lines = font.render_text(&time_str);
+        let font_height = font.height as u16;
+
+        // Create vertical layout for centering
+        let chunks = Layout::vertical([
+            Constraint::Fill(1),             // Top padding
+            Constraint::Length(font_height), // Timer digits
+            Constraint::Length(2),           // Spacing
+            Constraint::Length(1),           // Phase indicator
+            Constraint::Length(1),           // Session counter
+            Constraint::Fill(1),             // Bottom padding
+            Constraint::Length(1),           // Help text
+        ])
+        .split(area);
+
+        // Render big timer
+        let height = time_lines.len();
+        let width = time_lines.first().map(|s| s.chars().count()).unwrap_or(0);
+
+        let chunk = chunks[1];
+        let text_width = width as u16;
+        let start_x = chunk.x + (chunk.width.saturating_sub(text_width)) / 2;
+
+        let buf = frame.buffer_mut();
+        for (line_idx, line) in time_lines.iter().enumerate() {
+            let y_pos = chunk.y + line_idx as u16;
+            if y_pos >= chunk.y + chunk.height {
+                break;
+            }
+
+            for (char_idx, ch) in line.chars().enumerate() {
+                if ch == ' ' {
+                    continue;
+                }
+
+                let x_pos = start_x + char_idx as u16;
+                if x_pos >= chunk.x + chunk.width {
+                    continue;
+                }
+
+                // Get base color
+                let base_color = if self.color_theme.is_dynamic() {
+                    self.color_theme
+                        .color_at_position(char_idx, line_idx, width, height)
+                } else {
+                    color
+                };
+
+                // Apply animation
+                let animated_color = apply_animation(
+                    base_color,
+                    self.animation_style,
+                    self.animation_speed,
+                    elapsed_ms,
+                    char_idx,
+                    width,
+                    self.flash_intensity,
+                );
+
+                if let Some(cell) = buf.cell_mut(Position::new(x_pos, y_pos)) {
+                    cell.set_char(ch);
+                    cell.set_fg(animated_color);
+                }
+            }
+        }
+
+        // Render phase indicator
+        let phase_str = if self.pomodoro_running {
+            self.pomodoro_phase.display_name().to_string()
+        } else {
+            format!("{} (PAUSED)", self.pomodoro_phase.display_name())
+        };
+        let phase_chunk = chunks[3];
+        let phase_width = phase_str.len() as u16;
+        let phase_start_x = phase_chunk.x + (phase_chunk.width.saturating_sub(phase_width)) / 2;
+
+        let buf = frame.buffer_mut();
+        for (char_idx, ch) in phase_str.chars().enumerate() {
+            if ch == ' ' {
+                continue;
+            }
+            let x_pos = phase_start_x + char_idx as u16;
+            if x_pos >= phase_chunk.x + phase_chunk.width {
+                continue;
+            }
+
+            // Use different color for break phases
+            let phase_color = if self.pomodoro_phase.is_break() {
+                Color::Green
+            } else {
+                color
+            };
+
+            if let Some(cell) = buf.cell_mut(Position::new(x_pos, phase_chunk.y)) {
+                cell.set_char(ch);
+                cell.set_fg(phase_color);
+            }
+        }
+
+        // Render session counter
+        let session_str = format!(
+            "Session {}/{}",
+            self.pomodoro_sessions_completed + 1,
+            self.config.pomodoro_sessions_until_long
+        );
+        let session_chunk = chunks[4];
+        let session_width = session_str.len() as u16;
+        let session_start_x =
+            session_chunk.x + (session_chunk.width.saturating_sub(session_width)) / 2;
+
+        let buf = frame.buffer_mut();
+        for (char_idx, ch) in session_str.chars().enumerate() {
+            if ch == ' ' {
+                continue;
+            }
+            let x_pos = session_start_x + char_idx as u16;
+            if x_pos >= session_chunk.x + session_chunk.width {
+                continue;
+            }
+
+            if let Some(cell) = buf.cell_mut(Position::new(x_pos, session_chunk.y)) {
+                cell.set_char(ch);
+                cell.set_fg(Color::DarkGray);
+            }
+        }
+
+        // Render pomodoro help text
+        let help = Line::from(vec![
+            "q".bold().fg(color),
+            " quit  ".dark_gray(),
+            "m".bold().fg(color),
+            " clock  ".dark_gray(),
+            "Space".bold().fg(color),
+            " start/pause  ".dark_gray(),
+            "r".bold().fg(color),
+            " reset  ".dark_gray(),
+            "n".bold().fg(color),
+            " skip".dark_gray(),
+        ])
+        .centered();
+        frame.render_widget(help, chunks[6]);
     }
 
     /// Update flash intensity for reactive animation.
@@ -457,11 +646,22 @@ impl App {
         match (key.modifiers, key.code) {
             (_, KeyCode::Esc | KeyCode::Char('q'))
             | (KeyModifiers::CONTROL, KeyCode::Char('c') | KeyCode::Char('C')) => self.quit(),
+            (_, KeyCode::Char('m')) => self.toggle_display_mode(),
             (_, KeyCode::Char('t')) => self.toggle_time_format(),
             (_, KeyCode::Char('c')) => self.cycle_color_theme(),
             (_, KeyCode::Char('a')) => self.cycle_animation(),
             (_, KeyCode::Char('b')) => self.cycle_background(),
             (_, KeyCode::Char('s')) => self.open_settings(),
+            // Pomodoro-specific keys (only active in pomodoro mode)
+            (_, KeyCode::Char(' ')) if self.display_mode == DisplayMode::Pomodoro => {
+                self.toggle_pomodoro()
+            }
+            (_, KeyCode::Char('r')) if self.display_mode == DisplayMode::Pomodoro => {
+                self.reset_pomodoro()
+            }
+            (_, KeyCode::Char('n')) if self.display_mode == DisplayMode::Pomodoro => {
+                self.skip_pomodoro_phase()
+            }
             _ => {}
         }
     }
@@ -503,6 +703,10 @@ impl App {
         self.colon_blink = self.settings_dialog.colon_blink;
         self.show_seconds = self.settings_dialog.show_seconds;
         self.background_style = self.settings_dialog.background_style;
+        // Update pomodoro config (will take effect on next timer reset)
+        self.config.pomodoro_work_mins = self.settings_dialog.pomodoro_work_mins;
+        self.config.pomodoro_break_mins = self.settings_dialog.pomodoro_break_mins;
+        self.config.pomodoro_long_break_mins = self.settings_dialog.pomodoro_long_break_mins;
         self.update_background_monitors();
     }
 
@@ -517,6 +721,9 @@ impl App {
             self.colon_blink,
             self.show_seconds,
             self.background_style,
+            self.config.pomodoro_work_mins,
+            self.config.pomodoro_break_mins,
+            self.config.pomodoro_long_break_mins,
         );
     }
 
@@ -550,6 +757,9 @@ impl App {
         self.colon_blink = self.settings_dialog.original_colon_blink();
         self.show_seconds = self.settings_dialog.original_show_seconds();
         self.background_style = self.settings_dialog.original_background_style();
+        self.config.pomodoro_work_mins = self.settings_dialog.original_pomodoro_work_mins();
+        self.config.pomodoro_break_mins = self.settings_dialog.original_pomodoro_break_mins();
+        self.config.pomodoro_long_break_mins = self.settings_dialog.original_pomodoro_long_break_mins();
         self.update_background_monitors();
 
         self.settings_dialog.close();
@@ -600,6 +810,96 @@ impl App {
     /// Set running to false to quit the application.
     fn quit(&mut self) {
         self.running = false;
+    }
+
+    /// Toggle between clock and pomodoro display modes.
+    fn toggle_display_mode(&mut self) {
+        self.display_mode = self.display_mode.toggle();
+    }
+
+    /// Start or resume the pomodoro timer.
+    fn start_pomodoro(&mut self) {
+        self.pomodoro_running = true;
+        self.pomodoro_last_tick = Instant::now();
+    }
+
+    /// Pause the pomodoro timer.
+    fn pause_pomodoro(&mut self) {
+        self.pomodoro_running = false;
+    }
+
+    /// Toggle pomodoro timer start/pause.
+    fn toggle_pomodoro(&mut self) {
+        if self.pomodoro_running {
+            self.pause_pomodoro();
+        } else {
+            self.start_pomodoro();
+        }
+    }
+
+    /// Reset the pomodoro timer to the beginning of the current phase.
+    fn reset_pomodoro(&mut self) {
+        self.pomodoro_running = false;
+        self.pomodoro_remaining_secs = match self.pomodoro_phase {
+            PomodoroPhase::Work => self.config.pomodoro_work_mins * 60,
+            PomodoroPhase::ShortBreak => self.config.pomodoro_break_mins * 60,
+            PomodoroPhase::LongBreak => self.config.pomodoro_long_break_mins * 60,
+        };
+    }
+
+    /// Skip to the next pomodoro phase.
+    fn skip_pomodoro_phase(&mut self) {
+        self.transition_pomodoro_phase();
+    }
+
+    /// Transition to the next pomodoro phase.
+    fn transition_pomodoro_phase(&mut self) {
+        match self.pomodoro_phase {
+            PomodoroPhase::Work => {
+                self.pomodoro_sessions_completed += 1;
+                if self.pomodoro_sessions_completed >= self.config.pomodoro_sessions_until_long {
+                    self.pomodoro_phase = PomodoroPhase::LongBreak;
+                    self.pomodoro_remaining_secs = self.config.pomodoro_long_break_mins * 60;
+                } else {
+                    self.pomodoro_phase = PomodoroPhase::ShortBreak;
+                    self.pomodoro_remaining_secs = self.config.pomodoro_break_mins * 60;
+                }
+            }
+            PomodoroPhase::ShortBreak => {
+                self.pomodoro_phase = PomodoroPhase::Work;
+                self.pomodoro_remaining_secs = self.config.pomodoro_work_mins * 60;
+            }
+            PomodoroPhase::LongBreak => {
+                self.pomodoro_sessions_completed = 0;
+                self.pomodoro_phase = PomodoroPhase::Work;
+                self.pomodoro_remaining_secs = self.config.pomodoro_work_mins * 60;
+            }
+        }
+        // Trigger flash notification for phase transition
+        self.flash_intensity = 1.0;
+        self.flash_start = Some(Instant::now());
+        // Pause timer after transition (user must start manually)
+        self.pomodoro_running = false;
+    }
+
+    /// Update the pomodoro timer (called each frame).
+    fn update_pomodoro(&mut self) {
+        if !self.pomodoro_running {
+            return;
+        }
+
+        let elapsed = self.pomodoro_last_tick.elapsed();
+        if elapsed >= Duration::from_secs(1) {
+            let secs_elapsed = elapsed.as_secs() as u32;
+            self.pomodoro_last_tick = Instant::now();
+
+            if self.pomodoro_remaining_secs > secs_elapsed {
+                self.pomodoro_remaining_secs -= secs_elapsed;
+            } else {
+                self.pomodoro_remaining_secs = 0;
+                self.transition_pomodoro_phase();
+            }
+        }
     }
 }
 
