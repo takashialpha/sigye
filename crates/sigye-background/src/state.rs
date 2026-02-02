@@ -7,7 +7,7 @@ use ratatui::{
 };
 use sigye_core::{AnimationSpeed, BackgroundStyle, SystemMetrics};
 
-use crate::animations::{matrix, reactive, stateless, weather};
+use crate::animations::{matrix, reactive, sakura, stateless, weather};
 
 /// Background animation state.
 #[derive(Debug)]
@@ -22,6 +22,8 @@ pub struct BackgroundState {
     storm_state: Option<weather::StormState>,
     /// Wind streak states (for Windy background).
     wind_streaks: Vec<weather::WindStreak>,
+    /// Cherry blossom petal states.
+    petals: Vec<sakura::Petal>,
     /// Last known terminal width.
     last_width: u16,
     /// Last known terminal height.
@@ -55,6 +57,7 @@ impl BackgroundState {
             rain_columns: Vec::new(),
             storm_state: None,
             wind_streaks: Vec::new(),
+            petals: Vec::new(),
             last_width: 0,
             last_height: 0,
             last_update_ms: 0,
@@ -110,6 +113,10 @@ impl BackgroundState {
         if style == BackgroundStyle::Windy && (dimensions_changed || self.wind_streaks.is_empty()) {
             self.wind_streaks = weather::init_wind_streaks(width, height, self.init_seed);
         }
+        if style == BackgroundStyle::CherryBlossom && (dimensions_changed || self.petals.is_empty())
+        {
+            self.petals = sakura::init_petals(width, height, self.init_seed);
+        }
 
         if dimensions_changed {
             self.last_width = width;
@@ -138,6 +145,9 @@ impl BackgroundState {
         }
         if style == BackgroundStyle::Windy {
             weather::update_wind(&mut self.wind_streaks, delta_ms, width, height, speed);
+        }
+        if style == BackgroundStyle::CherryBlossom {
+            sakura::update_petals(&mut self.petals, delta_ms, width, height, speed);
         }
 
         let lines: Vec<Line> = (0..height)
@@ -209,6 +219,9 @@ impl BackgroundState {
             }
             BackgroundStyle::TwilightDusk => {
                 stateless::render_twilight_dusk_char(x, y, width, height, elapsed_ms, speed)
+            }
+            BackgroundStyle::CherryBlossom => {
+                sakura::render_petal_char(&self.petals, x, y, elapsed_ms)
             }
             // Reactive backgrounds are handled separately in render_reactive()
             BackgroundStyle::SystemPulse

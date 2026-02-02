@@ -34,3 +34,6 @@ pub const CLOUD_CHARS: &[char] = &['░', '▒', '▓', '·', '•', '○', '◌
 
 /// Characters used for fog/mist - soft wisps and dots.
 pub const FOG_CHARS: &[char] = &['·', '.', '\'', ':', '°', '∙', ','];
+
+/// Characters used for cherry blossom petals.
+pub const PETAL_CHARS: &[char] = &['✿', '❀', '✾', '·', '°'];

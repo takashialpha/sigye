@@ -137,6 +137,8 @@ pub enum BackgroundStyle {
     // Twilight backgrounds for dawn/dusk
     TwilightDawn,
     TwilightDusk,
+    // Spring theme backgrounds
+    CherryBlossom,
     // Reactive backgrounds that respond to system resource usage
     SystemPulse,
     ResourceWave,
@@ -162,6 +164,7 @@ const ALL_BACKGROUND_STYLES: &[BackgroundStyle] = &[
     BackgroundStyle::Weather,
     BackgroundStyle::TwilightDawn,
     BackgroundStyle::TwilightDusk,
+    BackgroundStyle::CherryBlossom,
     BackgroundStyle::SystemPulse,
     BackgroundStyle::ResourceWave,
     BackgroundStyle::DataFlow,
@@ -212,6 +215,7 @@ impl BackgroundStyle {
             BackgroundStyle::Weather => "Weather",
             BackgroundStyle::TwilightDawn => "Dawn",
             BackgroundStyle::TwilightDusk => "Dusk",
+            BackgroundStyle::CherryBlossom => "Sakura",
             BackgroundStyle::SystemPulse => "Sys Pulse",
             BackgroundStyle::ResourceWave => "Resource",
             BackgroundStyle::DataFlow => "Data Flow",
@@ -431,6 +435,15 @@ impl AnimationSpeed {
             AnimationSpeed::Fast => 2500,
         }
     }
+
+    /// Get the cherry blossom petal fall speed multiplier.
+    pub fn petal_fall_speed(self) -> f32 {
+        match self {
+            AnimationSpeed::Slow => 0.3,
+            AnimationSpeed::Medium => 0.6,
+            AnimationSpeed::Fast => 1.0,
+        }
+    }
 }
 
 /// Color theme for the clock display.
@@ -456,6 +469,8 @@ pub enum ColorTheme {
     GradientFrost,
     GradientAurora,
     GradientWinter,
+    // Spring color themes
+    GradientSakura,
 }
 
 /// All color themes in order for cycling.
@@ -477,6 +492,7 @@ const ALL_THEMES: &[ColorTheme] = &[
     ColorTheme::GradientFrost,
     ColorTheme::GradientAurora,
     ColorTheme::GradientWinter,
+    ColorTheme::GradientSakura,
 ];
 
 impl ColorTheme {
@@ -516,6 +532,7 @@ impl ColorTheme {
             ColorTheme::GradientCool | ColorTheme::GradientOcean => Color::Cyan,
             ColorTheme::GradientFrost | ColorTheme::GradientWinter => Color::Cyan,
             ColorTheme::GradientAurora => Color::Green,
+            ColorTheme::GradientSakura => Color::Rgb(255, 183, 197), // Sakura pink
         }
     }
 
@@ -533,6 +550,7 @@ impl ColorTheme {
                 | ColorTheme::GradientFrost
                 | ColorTheme::GradientAurora
                 | ColorTheme::GradientWinter
+                | ColorTheme::GradientSakura
         )
     }
 
@@ -736,6 +754,19 @@ impl ColorTheme {
                     Color::Rgb(r, g, b)
                 }
             }
+            ColorTheme::GradientSakura => {
+                // Sakura Pink -> Light Pink -> Lavender Blush (near white)
+                let progress = if width > 0 {
+                    (x as f32) / (width.max(1) as f32)
+                } else {
+                    0.0
+                };
+                // #FFB7C5 (255, 183, 197) -> #FFF0F5 (255, 240, 245)
+                let r = 255;
+                let g = (183.0 + 57.0 * progress) as u8; // 183 -> 240
+                let b = (197.0 + 48.0 * progress) as u8; // 197 -> 245
+                Color::Rgb(r, g, b)
+            }
             // Static themes just return their color
             _ => self.color(),
         }
@@ -761,6 +792,7 @@ impl ColorTheme {
             ColorTheme::GradientFrost => "Frost",
             ColorTheme::GradientAurora => "Aurora",
             ColorTheme::GradientWinter => "Winter",
+            ColorTheme::GradientSakura => "Sakura",
         }
     }
 }
