@@ -61,6 +61,10 @@ pub struct Config {
     /// Number of work sessions before a long break.
     #[serde(default = "default_pomodoro_sessions_until_long")]
     pub pomodoro_sessions_until_long: u32,
+
+    /// Whether to play terminal bell on pomodoro phase transitions.
+    #[serde(default = "default_pomodoro_sound")]
+    pub pomodoro_sound: bool,
 }
 
 fn default_font() -> String {
@@ -87,6 +91,10 @@ fn default_pomodoro_sessions_until_long() -> u32 {
     4
 }
 
+fn default_pomodoro_sound() -> bool {
+    true
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -103,6 +111,7 @@ impl Default for Config {
             pomodoro_break_mins: default_pomodoro_break_mins(),
             pomodoro_long_break_mins: default_pomodoro_long_break_mins(),
             pomodoro_sessions_until_long: default_pomodoro_sessions_until_long(),
+            pomodoro_sound: default_pomodoro_sound(),
         }
     }
 }

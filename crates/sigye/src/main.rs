@@ -707,6 +707,7 @@ impl App {
         self.config.pomodoro_work_mins = self.settings_dialog.pomodoro_work_mins;
         self.config.pomodoro_break_mins = self.settings_dialog.pomodoro_break_mins;
         self.config.pomodoro_long_break_mins = self.settings_dialog.pomodoro_long_break_mins;
+        self.config.pomodoro_sound = self.settings_dialog.pomodoro_sound;
         self.update_background_monitors();
     }
 
@@ -724,6 +725,7 @@ impl App {
             self.config.pomodoro_work_mins,
             self.config.pomodoro_break_mins,
             self.config.pomodoro_long_break_mins,
+            self.config.pomodoro_sound,
         );
     }
 
@@ -738,6 +740,7 @@ impl App {
         self.config.colon_blink = self.colon_blink;
         self.config.show_seconds = self.show_seconds;
         self.config.background_style = self.background_style;
+        // pomodoro_sound already synced via apply_settings_preview
 
         if let Err(e) = self.config.save() {
             eprintln!("Warning: Failed to save config: {e}");
@@ -759,7 +762,9 @@ impl App {
         self.background_style = self.settings_dialog.original_background_style();
         self.config.pomodoro_work_mins = self.settings_dialog.original_pomodoro_work_mins();
         self.config.pomodoro_break_mins = self.settings_dialog.original_pomodoro_break_mins();
-        self.config.pomodoro_long_break_mins = self.settings_dialog.original_pomodoro_long_break_mins();
+        self.config.pomodoro_long_break_mins =
+            self.settings_dialog.original_pomodoro_long_break_mins();
+        self.config.pomodoro_sound = self.settings_dialog.original_pomodoro_sound();
         self.update_background_monitors();
 
         self.settings_dialog.close();
@@ -878,6 +883,10 @@ impl App {
         // Trigger flash notification for phase transition
         self.flash_intensity = 1.0;
         self.flash_start = Some(Instant::now());
+        // Ring terminal bell if enabled
+        if self.config.pomodoro_sound {
+            print!("\x07");
+        }
         // Pause timer after transition (user must start manually)
         self.pomodoro_running = false;
     }

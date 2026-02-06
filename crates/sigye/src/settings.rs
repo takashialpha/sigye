@@ -24,6 +24,7 @@ pub enum SettingsField {
     PomodoroWork,
     PomodoroBreak,
     PomodoroLongBreak,
+    PomodoroSound,
 }
 
 impl SettingsField {
@@ -40,14 +41,16 @@ impl SettingsField {
             Self::ColonBlink => Self::PomodoroWork,
             Self::PomodoroWork => Self::PomodoroBreak,
             Self::PomodoroBreak => Self::PomodoroLongBreak,
-            Self::PomodoroLongBreak => Self::Font,
+            Self::PomodoroLongBreak => Self::PomodoroSound,
+            Self::PomodoroSound => Self::Font,
         }
     }
 
     /// Move to the previous field.
     pub fn prev(self) -> Self {
         match self {
-            Self::Font => Self::PomodoroLongBreak,
+            Self::Font => Self::PomodoroSound,
+            Self::PomodoroSound => Self::PomodoroLongBreak,
             Self::Color => Self::Font,
             Self::TimeFormat => Self::Color,
             Self::ShowSeconds => Self::TimeFormat,
@@ -93,6 +96,8 @@ pub struct SettingsDialog {
     pub pomodoro_break_mins: u32,
     /// Pomodoro long break duration in minutes.
     pub pomodoro_long_break_mins: u32,
+    /// Pomodoro sound notification setting.
+    pub pomodoro_sound: bool,
     /// Original font index (for cancel/revert).
     original_font_index: usize,
     /// Original color theme (for cancel/revert).
@@ -115,6 +120,8 @@ pub struct SettingsDialog {
     original_pomodoro_break_mins: u32,
     /// Original pomodoro long break duration (for cancel/revert).
     original_pomodoro_long_break_mins: u32,
+    /// Original pomodoro sound (for cancel/revert).
+    original_pomodoro_sound: bool,
 }
 
 impl SettingsDialog {
@@ -135,6 +142,7 @@ impl SettingsDialog {
             pomodoro_work_mins: 25,
             pomodoro_break_mins: 5,
             pomodoro_long_break_mins: 15,
+            pomodoro_sound: true,
             original_font_index: 0,
             original_color_theme: ColorTheme::default(),
             original_time_format: TimeFormat::default(),
@@ -146,6 +154,7 @@ impl SettingsDialog {
             original_pomodoro_work_mins: 25,
             original_pomodoro_break_mins: 5,
             original_pomodoro_long_break_mins: 15,
+            original_pomodoro_sound: true,
         }
     }
 
@@ -164,6 +173,7 @@ impl SettingsDialog {
         pomodoro_work_mins: u32,
         pomodoro_break_mins: u32,
         pomodoro_long_break_mins: u32,
+        pomodoro_sound: bool,
     ) {
         self.visible = true;
         self.selected_field = SettingsField::default();
@@ -177,6 +187,7 @@ impl SettingsDialog {
         self.pomodoro_work_mins = pomodoro_work_mins;
         self.pomodoro_break_mins = pomodoro_break_mins;
         self.pomodoro_long_break_mins = pomodoro_long_break_mins;
+        self.pomodoro_sound = pomodoro_sound;
 
         // Find font index
         self.font_index = self
@@ -197,6 +208,7 @@ impl SettingsDialog {
         self.original_pomodoro_work_mins = pomodoro_work_mins;
         self.original_pomodoro_break_mins = pomodoro_break_mins;
         self.original_pomodoro_long_break_mins = pomodoro_long_break_mins;
+        self.original_pomodoro_sound = pomodoro_sound;
     }
 
     /// Close without saving.
@@ -260,6 +272,11 @@ impl SettingsDialog {
     /// Get original pomodoro long break duration (for reverting on cancel).
     pub fn original_pomodoro_long_break_mins(&self) -> u32 {
         self.original_pomodoro_long_break_mins
+    }
+
+    /// Get original pomodoro sound (for reverting on cancel).
+    pub fn original_pomodoro_sound(&self) -> bool {
+        self.original_pomodoro_sound
     }
 
     /// Move to next field.
@@ -331,6 +348,9 @@ impl SettingsDialog {
                     _ => 10,
                 };
             }
+            SettingsField::PomodoroSound => {
+                self.pomodoro_sound = !self.pomodoro_sound;
+            }
         }
     }
 
@@ -400,6 +420,9 @@ impl SettingsDialog {
                     _ => 15,
                 };
             }
+            SettingsField::PomodoroSound => {
+                self.pomodoro_sound = !self.pomodoro_sound;
+            }
         }
     }
 
@@ -419,7 +442,7 @@ impl SettingsDialog {
 
         // Calculate centered dialog area
         let dialog_width = 40.min(area.width.saturating_sub(4));
-        let dialog_height = 27.min(area.height.saturating_sub(2)); // Increased for pomodoro fields
+        let dialog_height = 29.min(area.height.saturating_sub(2)); // Increased for pomodoro fields
 
         let dialog_x = area.x + (area.width.saturating_sub(dialog_width)) / 2;
         let dialog_y = area.y + (area.height.saturating_sub(dialog_height)) / 2;
@@ -463,8 +486,10 @@ impl SettingsDialog {
             Constraint::Length(1), // 19: Pomodoro Break
             Constraint::Length(1), // 20: Spacing
             Constraint::Length(1), // 21: Pomodoro Long Break
-            Constraint::Fill(1),   // 22: Bottom space
-            Constraint::Length(1), // 23: Help text
+            Constraint::Length(1), // 22: Spacing
+            Constraint::Length(1), // 23: Pomodoro Sound
+            Constraint::Fill(1),   // 24: Bottom space
+            Constraint::Length(1), // 25: Help text
         ])
         .split(inner_area);
 
@@ -610,6 +635,19 @@ impl SettingsDialog {
             chunks[21],
         );
 
+        // Render pomodoro sound field
+        let sound_value = if self.pomodoro_sound { "On" } else { "Off" };
+        let sound_line = self.render_field(
+            "Pomo Sound",
+            sound_value,
+            self.selected_field == SettingsField::PomodoroSound,
+            accent_color,
+        );
+        frame.render_widget(
+            Paragraph::new(sound_line).alignment(Alignment::Center),
+            chunks[23],
+        );
+
         // Render help text
         let help = Line::from(vec![
             Span::styled("↑↓", Style::default().fg(accent_color).bold()),
@@ -623,7 +661,7 @@ impl SettingsDialog {
         ]);
         frame.render_widget(
             Paragraph::new(help).alignment(Alignment::Center),
-            chunks[23],
+            chunks[25],
         );
     }
 
