@@ -68,6 +68,13 @@ impl SettingsField {
     }
 }
 
+/// A row in the settings dialog layout.
+enum RowKind {
+    Header(&'static str),
+    Field(SettingsField),
+    Spacer,
+}
+
 /// Settings dialog state.
 #[derive(Debug)]
 pub struct SettingsDialog {
@@ -75,6 +82,8 @@ pub struct SettingsDialog {
     pub visible: bool,
     /// Currently selected field.
     pub selected_field: SettingsField,
+    /// Scroll offset for vertical scrolling.
+    scroll_offset: u16,
     /// Index into available fonts list.
     pub font_index: usize,
     /// List of available font names.
@@ -137,6 +146,7 @@ impl SettingsDialog {
         Self {
             visible: false,
             selected_field: SettingsField::default(),
+            scroll_offset: 0,
             font_index: 0,
             available_fonts,
             color_theme: ColorTheme::default(),
@@ -187,6 +197,7 @@ impl SettingsDialog {
     ) {
         self.visible = true;
         self.selected_field = SettingsField::default();
+        self.scroll_offset = 0;
         self.color_theme = color_theme;
         self.time_format = time_format;
         self.animation_style = animation_style;
@@ -296,14 +307,61 @@ impl SettingsDialog {
         self.original_timer_duration_mins
     }
 
-    /// Move to next field.
+    /// Move to next field and ensure it's visible.
     pub fn next_field(&mut self) {
         self.selected_field = self.selected_field.next();
     }
 
-    /// Move to previous field.
+    /// Move to previous field and ensure it's visible.
     pub fn prev_field(&mut self) {
         self.selected_field = self.selected_field.prev();
+    }
+
+    /// Get the section layout: ordered list of rows (headers, fields, spacers).
+    fn section_layout() -> Vec<RowKind> {
+        vec![
+            RowKind::Header("Clock"),
+            RowKind::Field(SettingsField::Font),
+            RowKind::Field(SettingsField::Color),
+            RowKind::Field(SettingsField::TimeFormat),
+            RowKind::Field(SettingsField::ShowSeconds),
+            RowKind::Field(SettingsField::ColonBlink),
+            RowKind::Spacer,
+            RowKind::Header("Animation"),
+            RowKind::Field(SettingsField::Animation),
+            RowKind::Field(SettingsField::Speed),
+            RowKind::Field(SettingsField::Background),
+            RowKind::Spacer,
+            RowKind::Header("Pomodoro"),
+            RowKind::Field(SettingsField::PomodoroWork),
+            RowKind::Field(SettingsField::PomodoroBreak),
+            RowKind::Field(SettingsField::PomodoroLongBreak),
+            RowKind::Field(SettingsField::PomodoroSound),
+            RowKind::Spacer,
+            RowKind::Header("Timer"),
+            RowKind::Field(SettingsField::TimerDuration),
+        ]
+    }
+
+    /// Get the row index of the currently selected field in the section layout.
+    fn selected_field_row_index(&self) -> usize {
+        Self::section_layout()
+            .iter()
+            .position(|row| matches!(row, RowKind::Field(f) if *f == self.selected_field))
+            .unwrap_or(0)
+    }
+
+    /// Adjust scroll_offset so the selected field is within the visible window.
+    fn ensure_visible(&mut self, visible_rows: u16) {
+        let row_idx = self.selected_field_row_index() as u16;
+        // Scroll up if selected field is above the visible window
+        if row_idx < self.scroll_offset {
+            self.scroll_offset = row_idx;
+        }
+        // Scroll down if selected field is below the visible window
+        if row_idx >= self.scroll_offset + visible_rows {
+            self.scroll_offset = row_idx.saturating_sub(visible_rows - 1);
+        }
     }
 
     /// Select next value for current field.
@@ -458,18 +516,21 @@ impl SettingsDialog {
     }
 
     /// Render the settings dialog.
-    pub fn render(&self, frame: &mut Frame, area: Rect, accent_color: Color) {
+    pub fn render(&mut self, frame: &mut Frame, area: Rect, accent_color: Color) {
         if !self.visible {
             return;
         }
 
-        // Calculate centered dialog area
-        let dialog_width = 40.min(area.width.saturating_sub(4));
-        let dialog_height = 31.min(area.height.saturating_sub(2));
+        let layout = Self::section_layout();
+        let total_content_rows = layout.len() as u16;
+
+        // Proportional dialog sizing
+        let dialog_width = 50.min(area.width.saturating_sub(4));
+        // +5 for: border top/bottom (2) + help row (1) + top padding (1) + bottom padding (1)
+        let dialog_height = (total_content_rows + 5).min(area.height.saturating_sub(2));
 
         let dialog_x = area.x + (area.width.saturating_sub(dialog_width)) / 2;
         let dialog_y = area.y + (area.height.saturating_sub(dialog_height)) / 2;
-
         let dialog_area = Rect::new(dialog_x, dialog_y, dialog_width, dialog_height);
 
         // Clear the area behind the dialog
@@ -485,206 +546,93 @@ impl SettingsDialog {
         let inner_area = block.inner(dialog_area);
         frame.render_widget(block, dialog_area);
 
-        // Layout for settings fields
+        // Split inner area with padding around content
         let chunks = Layout::vertical([
-            Constraint::Length(1), // 0: Top padding
-            Constraint::Length(1), // 1: Font
-            Constraint::Length(1), // 2: Spacing
-            Constraint::Length(1), // 3: Color
-            Constraint::Length(1), // 4: Spacing
-            Constraint::Length(1), // 5: Time Format
-            Constraint::Length(1), // 6: Spacing
-            Constraint::Length(1), // 7: Show Seconds
-            Constraint::Length(1), // 8: Spacing
-            Constraint::Length(1), // 9: Animation
-            Constraint::Length(1), // 10: Spacing
-            Constraint::Length(1), // 11: Speed
-            Constraint::Length(1), // 12: Spacing
-            Constraint::Length(1), // 13: Background
-            Constraint::Length(1), // 14: Spacing
-            Constraint::Length(1), // 15: Colon Blink
-            Constraint::Length(1), // 16: Spacing
-            Constraint::Length(1), // 17: Pomodoro Work
-            Constraint::Length(1), // 18: Spacing
-            Constraint::Length(1), // 19: Pomodoro Break
-            Constraint::Length(1), // 20: Spacing
-            Constraint::Length(1), // 21: Pomodoro Long Break
-            Constraint::Length(1), // 22: Spacing
-            Constraint::Length(1), // 23: Pomodoro Sound
-            Constraint::Length(1), // 24: Spacing
-            Constraint::Length(1), // 25: Timer Duration
-            Constraint::Fill(1),   // 26: Bottom space
-            Constraint::Length(1), // 27: Help text
+            Constraint::Length(1), // Top padding
+            Constraint::Fill(1),   // Scrollable content area
+            Constraint::Length(1), // Bottom padding
+            Constraint::Length(1), // Help text
         ])
         .split(inner_area);
 
-        // Render font field
-        let font_line = self.render_field(
-            "Font",
-            self.selected_font(),
-            self.selected_field == SettingsField::Font,
-            accent_color,
+        // Add horizontal padding (2 chars each side)
+        let content_area = Rect::new(
+            chunks[1].x + 2,
+            chunks[1].y,
+            chunks[1].width.saturating_sub(4),
+            chunks[1].height,
         );
-        frame.render_widget(
-            Paragraph::new(font_line).alignment(Alignment::Center),
-            chunks[1],
-        );
+        let visible_rows = content_area.height;
 
-        // Render color field
-        let color_line = self.render_field(
-            "Color",
-            self.color_theme.display_name(),
-            self.selected_field == SettingsField::Color,
-            accent_color,
-        );
-        frame.render_widget(
-            Paragraph::new(color_line).alignment(Alignment::Center),
-            chunks[3],
-        );
+        // Ensure selected field is visible (adjust scroll)
+        self.ensure_visible(visible_rows);
 
-        // Render time format field
-        let time_format_name = match self.time_format {
-            TimeFormat::TwentyFourHour => "24-hour",
-            TimeFormat::TwelveHour => "12-hour",
-        };
-        let time_line = self.render_field(
-            "Format",
-            time_format_name,
-            self.selected_field == SettingsField::TimeFormat,
-            accent_color,
-        );
-        frame.render_widget(
-            Paragraph::new(time_line).alignment(Alignment::Center),
-            chunks[5],
-        );
+        // Determine if we need scroll indicators
+        let can_scroll_up = self.scroll_offset > 0;
+        let can_scroll_down = total_content_rows > self.scroll_offset + visible_rows;
 
-        // Render show seconds field
-        let seconds_value = if self.show_seconds { "On" } else { "Off" };
-        let seconds_line = self.render_field(
-            "Seconds",
-            seconds_value,
-            self.selected_field == SettingsField::ShowSeconds,
-            accent_color,
-        );
-        frame.render_widget(
-            Paragraph::new(seconds_line).alignment(Alignment::Center),
-            chunks[7],
-        );
+        // Render content rows within the visible scroll window
+        for (row_idx, row) in layout.iter().enumerate() {
+            let row_idx = row_idx as u16;
+            if row_idx < self.scroll_offset {
+                continue;
+            }
+            let visible_y = row_idx - self.scroll_offset;
+            if visible_y >= visible_rows {
+                break;
+            }
 
-        // Render animation field
-        let animation_line = self.render_field(
-            "Animation",
-            self.animation_style.display_name(),
-            self.selected_field == SettingsField::Animation,
-            accent_color,
-        );
-        frame.render_widget(
-            Paragraph::new(animation_line).alignment(Alignment::Center),
-            chunks[9],
-        );
+            let row_area = Rect::new(
+                content_area.x,
+                content_area.y + visible_y,
+                content_area.width,
+                1,
+            );
 
-        // Render speed field (grayed out when Animation is None)
-        let speed_line = self.render_field_with_style(
-            "Speed",
-            self.animation_speed.display_name(),
-            self.selected_field == SettingsField::Speed,
-            accent_color,
-            self.animation_style != AnimationStyle::None,
-        );
-        frame.render_widget(
-            Paragraph::new(speed_line).alignment(Alignment::Center),
-            chunks[11],
-        );
+            match row {
+                RowKind::Header(name) => {
+                    let header = self.render_section_header(name, accent_color);
+                    frame.render_widget(
+                        Paragraph::new(header).alignment(Alignment::Center),
+                        row_area,
+                    );
+                }
+                RowKind::Field(field) => {
+                    let line = self.render_field_for(*field, accent_color);
+                    frame
+                        .render_widget(Paragraph::new(line).alignment(Alignment::Center), row_area);
+                }
+                RowKind::Spacer => {} // Empty row
+            }
+        }
 
-        // Render background field
-        let background_line = self.render_field(
-            "Background",
-            self.background_style.display_name(),
-            self.selected_field == SettingsField::Background,
-            accent_color,
-        );
-        frame.render_widget(
-            Paragraph::new(background_line).alignment(Alignment::Center),
-            chunks[13],
-        );
-
-        // Render colon blink field
-        let blink_value = if self.colon_blink { "On" } else { "Off" };
-        let blink_line = self.render_field(
-            "Colon Blink",
-            blink_value,
-            self.selected_field == SettingsField::ColonBlink,
-            accent_color,
-        );
-        frame.render_widget(
-            Paragraph::new(blink_line).alignment(Alignment::Center),
-            chunks[15],
-        );
-
-        // Render pomodoro work duration field
-        let work_value = format!("{} min", self.pomodoro_work_mins);
-        let work_line = self.render_field(
-            "Pomo Work",
-            &work_value,
-            self.selected_field == SettingsField::PomodoroWork,
-            accent_color,
-        );
-        frame.render_widget(
-            Paragraph::new(work_line).alignment(Alignment::Center),
-            chunks[17],
-        );
-
-        // Render pomodoro break duration field
-        let break_value = format!("{} min", self.pomodoro_break_mins);
-        let break_line = self.render_field(
-            "Pomo Break",
-            &break_value,
-            self.selected_field == SettingsField::PomodoroBreak,
-            accent_color,
-        );
-        frame.render_widget(
-            Paragraph::new(break_line).alignment(Alignment::Center),
-            chunks[19],
-        );
-
-        // Render pomodoro long break duration field
-        let long_break_value = format!("{} min", self.pomodoro_long_break_mins);
-        let long_break_line = self.render_field(
-            "Pomo Long",
-            &long_break_value,
-            self.selected_field == SettingsField::PomodoroLongBreak,
-            accent_color,
-        );
-        frame.render_widget(
-            Paragraph::new(long_break_line).alignment(Alignment::Center),
-            chunks[21],
-        );
-
-        // Render pomodoro sound field
-        let sound_value = if self.pomodoro_sound { "On" } else { "Off" };
-        let sound_line = self.render_field(
-            "Pomo Sound",
-            sound_value,
-            self.selected_field == SettingsField::PomodoroSound,
-            accent_color,
-        );
-        frame.render_widget(
-            Paragraph::new(sound_line).alignment(Alignment::Center),
-            chunks[23],
-        );
-
-        // Render timer duration field
-        let timer_value = format!("{} min", self.timer_duration_mins);
-        let timer_line = self.render_field(
-            "Timer",
-            &timer_value,
-            self.selected_field == SettingsField::TimerDuration,
-            accent_color,
-        );
-        frame.render_widget(
-            Paragraph::new(timer_line).alignment(Alignment::Center),
-            chunks[25],
-        );
+        // Render scroll indicators over first/last content rows
+        if can_scroll_up {
+            let indicator = Line::from(Span::styled("  ▲  ", Style::default().fg(accent_color)));
+            let indicator_area = Rect::new(
+                content_area.x + content_area.width.saturating_sub(6),
+                content_area.y,
+                6,
+                1,
+            );
+            frame.render_widget(
+                Paragraph::new(indicator).alignment(Alignment::Right),
+                indicator_area,
+            );
+        }
+        if can_scroll_down {
+            let indicator = Line::from(Span::styled("  ▼  ", Style::default().fg(accent_color)));
+            let indicator_area = Rect::new(
+                content_area.x + content_area.width.saturating_sub(6),
+                content_area.y + visible_rows.saturating_sub(1),
+                6,
+                1,
+            );
+            frame.render_widget(
+                Paragraph::new(indicator).alignment(Alignment::Right),
+                indicator_area,
+            );
+        }
 
         // Render help text
         let help = Line::from(vec![
@@ -697,10 +645,85 @@ impl SettingsDialog {
             Span::styled("Esc", Style::default().fg(accent_color).bold()),
             Span::styled(" cancel", Style::default().dark_gray()),
         ]);
-        frame.render_widget(
-            Paragraph::new(help).alignment(Alignment::Center),
-            chunks[27],
-        );
+        frame.render_widget(Paragraph::new(help).alignment(Alignment::Center), chunks[3]);
+    }
+
+    /// Render a section header line.
+    fn render_section_header(&self, name: &str, accent_color: Color) -> Line<'static> {
+        Line::from(Span::styled(
+            format!("── {name} ──"),
+            Style::default().fg(accent_color).bold(),
+        ))
+    }
+
+    /// Render the appropriate field line for a given SettingsField.
+    fn render_field_for(&self, field: SettingsField, accent_color: Color) -> Line<'static> {
+        let selected = self.selected_field == field;
+        match field {
+            SettingsField::Font => {
+                self.render_field("Font", self.selected_font(), selected, accent_color)
+            }
+            SettingsField::Color => self.render_field(
+                "Color",
+                self.color_theme.display_name(),
+                selected,
+                accent_color,
+            ),
+            SettingsField::TimeFormat => {
+                let name = match self.time_format {
+                    TimeFormat::TwentyFourHour => "24-hour",
+                    TimeFormat::TwelveHour => "12-hour",
+                };
+                self.render_field("Format", name, selected, accent_color)
+            }
+            SettingsField::ShowSeconds => {
+                let v = if self.show_seconds { "On" } else { "Off" };
+                self.render_field("Seconds", v, selected, accent_color)
+            }
+            SettingsField::ColonBlink => {
+                let v = if self.colon_blink { "On" } else { "Off" };
+                self.render_field("Colon Blink", v, selected, accent_color)
+            }
+            SettingsField::Animation => self.render_field(
+                "Animation",
+                self.animation_style.display_name(),
+                selected,
+                accent_color,
+            ),
+            SettingsField::Speed => self.render_field_with_style(
+                "Speed",
+                self.animation_speed.display_name(),
+                selected,
+                accent_color,
+                self.animation_style != AnimationStyle::None,
+            ),
+            SettingsField::Background => self.render_field(
+                "Background",
+                self.background_style.display_name(),
+                selected,
+                accent_color,
+            ),
+            SettingsField::PomodoroWork => {
+                let v = format!("{} min", self.pomodoro_work_mins);
+                self.render_field("Work", &v, selected, accent_color)
+            }
+            SettingsField::PomodoroBreak => {
+                let v = format!("{} min", self.pomodoro_break_mins);
+                self.render_field("Break", &v, selected, accent_color)
+            }
+            SettingsField::PomodoroLongBreak => {
+                let v = format!("{} min", self.pomodoro_long_break_mins);
+                self.render_field("Long Break", &v, selected, accent_color)
+            }
+            SettingsField::PomodoroSound => {
+                let v = if self.pomodoro_sound { "On" } else { "Off" };
+                self.render_field("Sound", v, selected, accent_color)
+            }
+            SettingsField::TimerDuration => {
+                let v = format!("{} min", self.timer_duration_mins);
+                self.render_field("Duration", &v, selected, accent_color)
+            }
+        }
     }
 
     /// Render a single settings field line.
