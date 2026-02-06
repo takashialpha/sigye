@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/*"]
 
 [workspace.package]
-version = "0.2.3"
+version = "0.3.0"
 authors = ["am2rican5 <am2rican5@gmail.com>"]
 license = "MIT"
 edition = "2024"
@@ -22,10 +22,10 @@ directories = "6.0"
 sysinfo = "0.38"
 ureq = { version = "3.2", features = ["json"] }
 serde_json = "1.0"
-sigye-core = { version = "0.2.3", path = "crates/sigye-core" }
-sigye-fonts = { version = "0.2.3", path = "crates/sigye-fonts" }
-sigye-config = { version = "0.2.3", path = "crates/sigye-config" }
-sigye-background = { version = "0.2.3", path = "crates/sigye-background" }
+sigye-core = { version = "0.3.0", path = "crates/sigye-core" }
+sigye-fonts = { version = "0.3.0", path = "crates/sigye-fonts" }
+sigye-config = { version = "0.3.0", path = "crates/sigye-config" }
+sigye-background = { version = "0.3.0", path = "crates/sigye-background" }
 
 [profile.release]
 codegen-units = 1
