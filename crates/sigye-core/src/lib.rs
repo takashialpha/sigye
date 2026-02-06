@@ -9,15 +9,25 @@ pub enum DisplayMode {
     #[default]
     Clock,
     Pomodoro,
+    Timer,
 }
 
+/// All display modes for cycling.
+const ALL_DISPLAY_MODES: &[DisplayMode] = &[
+    DisplayMode::Clock,
+    DisplayMode::Pomodoro,
+    DisplayMode::Timer,
+];
+
 impl DisplayMode {
-    /// Toggle between display modes.
-    pub fn toggle(&self) -> Self {
-        match self {
-            DisplayMode::Clock => DisplayMode::Pomodoro,
-            DisplayMode::Pomodoro => DisplayMode::Clock,
-        }
+    /// Cycle to the next display mode.
+    pub fn next(&self) -> Self {
+        let current_idx = ALL_DISPLAY_MODES
+            .iter()
+            .position(|m| m == self)
+            .unwrap_or(0);
+        let next_idx = (current_idx + 1) % ALL_DISPLAY_MODES.len();
+        ALL_DISPLAY_MODES[next_idx]
     }
 
     /// Get display name for the mode.
@@ -25,6 +35,7 @@ impl DisplayMode {
         match self {
             DisplayMode::Clock => "Clock",
             DisplayMode::Pomodoro => "Pomodoro",
+            DisplayMode::Timer => "Timer",
         }
     }
 }

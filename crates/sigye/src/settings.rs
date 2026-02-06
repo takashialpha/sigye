@@ -25,6 +25,7 @@ pub enum SettingsField {
     PomodoroBreak,
     PomodoroLongBreak,
     PomodoroSound,
+    TimerDuration,
 }
 
 impl SettingsField {
@@ -42,14 +43,16 @@ impl SettingsField {
             Self::PomodoroWork => Self::PomodoroBreak,
             Self::PomodoroBreak => Self::PomodoroLongBreak,
             Self::PomodoroLongBreak => Self::PomodoroSound,
-            Self::PomodoroSound => Self::Font,
+            Self::PomodoroSound => Self::TimerDuration,
+            Self::TimerDuration => Self::Font,
         }
     }
 
     /// Move to the previous field.
     pub fn prev(self) -> Self {
         match self {
-            Self::Font => Self::PomodoroSound,
+            Self::Font => Self::TimerDuration,
+            Self::TimerDuration => Self::PomodoroSound,
             Self::PomodoroSound => Self::PomodoroLongBreak,
             Self::Color => Self::Font,
             Self::TimeFormat => Self::Color,
@@ -98,6 +101,8 @@ pub struct SettingsDialog {
     pub pomodoro_long_break_mins: u32,
     /// Pomodoro sound notification setting.
     pub pomodoro_sound: bool,
+    /// Timer countdown duration in minutes.
+    pub timer_duration_mins: u32,
     /// Original font index (for cancel/revert).
     original_font_index: usize,
     /// Original color theme (for cancel/revert).
@@ -122,6 +127,8 @@ pub struct SettingsDialog {
     original_pomodoro_long_break_mins: u32,
     /// Original pomodoro sound (for cancel/revert).
     original_pomodoro_sound: bool,
+    /// Original timer duration (for cancel/revert).
+    original_timer_duration_mins: u32,
 }
 
 impl SettingsDialog {
@@ -143,6 +150,7 @@ impl SettingsDialog {
             pomodoro_break_mins: 5,
             pomodoro_long_break_mins: 15,
             pomodoro_sound: true,
+            timer_duration_mins: 5,
             original_font_index: 0,
             original_color_theme: ColorTheme::default(),
             original_time_format: TimeFormat::default(),
@@ -155,6 +163,7 @@ impl SettingsDialog {
             original_pomodoro_break_mins: 5,
             original_pomodoro_long_break_mins: 15,
             original_pomodoro_sound: true,
+            original_timer_duration_mins: 5,
         }
     }
 
@@ -174,6 +183,7 @@ impl SettingsDialog {
         pomodoro_break_mins: u32,
         pomodoro_long_break_mins: u32,
         pomodoro_sound: bool,
+        timer_duration_mins: u32,
     ) {
         self.visible = true;
         self.selected_field = SettingsField::default();
@@ -188,6 +198,7 @@ impl SettingsDialog {
         self.pomodoro_break_mins = pomodoro_break_mins;
         self.pomodoro_long_break_mins = pomodoro_long_break_mins;
         self.pomodoro_sound = pomodoro_sound;
+        self.timer_duration_mins = timer_duration_mins;
 
         // Find font index
         self.font_index = self
@@ -209,6 +220,7 @@ impl SettingsDialog {
         self.original_pomodoro_break_mins = pomodoro_break_mins;
         self.original_pomodoro_long_break_mins = pomodoro_long_break_mins;
         self.original_pomodoro_sound = pomodoro_sound;
+        self.original_timer_duration_mins = timer_duration_mins;
     }
 
     /// Close without saving.
@@ -277,6 +289,11 @@ impl SettingsDialog {
     /// Get original pomodoro sound (for reverting on cancel).
     pub fn original_pomodoro_sound(&self) -> bool {
         self.original_pomodoro_sound
+    }
+
+    /// Get original timer duration (for reverting on cancel).
+    pub fn original_timer_duration_mins(&self) -> u32 {
+        self.original_timer_duration_mins
     }
 
     /// Move to next field.
@@ -351,6 +368,9 @@ impl SettingsDialog {
             SettingsField::PomodoroSound => {
                 self.pomodoro_sound = !self.pomodoro_sound;
             }
+            SettingsField::TimerDuration => {
+                self.timer_duration_mins = (self.timer_duration_mins + 1).min(99);
+            }
         }
     }
 
@@ -423,6 +443,9 @@ impl SettingsDialog {
             SettingsField::PomodoroSound => {
                 self.pomodoro_sound = !self.pomodoro_sound;
             }
+            SettingsField::TimerDuration => {
+                self.timer_duration_mins = (self.timer_duration_mins.saturating_sub(1)).max(1);
+            }
         }
     }
 
@@ -442,7 +465,7 @@ impl SettingsDialog {
 
         // Calculate centered dialog area
         let dialog_width = 40.min(area.width.saturating_sub(4));
-        let dialog_height = 29.min(area.height.saturating_sub(2)); // Increased for pomodoro fields
+        let dialog_height = 31.min(area.height.saturating_sub(2));
 
         let dialog_x = area.x + (area.width.saturating_sub(dialog_width)) / 2;
         let dialog_y = area.y + (area.height.saturating_sub(dialog_height)) / 2;
@@ -488,8 +511,10 @@ impl SettingsDialog {
             Constraint::Length(1), // 21: Pomodoro Long Break
             Constraint::Length(1), // 22: Spacing
             Constraint::Length(1), // 23: Pomodoro Sound
-            Constraint::Fill(1),   // 24: Bottom space
-            Constraint::Length(1), // 25: Help text
+            Constraint::Length(1), // 24: Spacing
+            Constraint::Length(1), // 25: Timer Duration
+            Constraint::Fill(1),   // 26: Bottom space
+            Constraint::Length(1), // 27: Help text
         ])
         .split(inner_area);
 
@@ -648,6 +673,19 @@ impl SettingsDialog {
             chunks[23],
         );
 
+        // Render timer duration field
+        let timer_value = format!("{} min", self.timer_duration_mins);
+        let timer_line = self.render_field(
+            "Timer",
+            &timer_value,
+            self.selected_field == SettingsField::TimerDuration,
+            accent_color,
+        );
+        frame.render_widget(
+            Paragraph::new(timer_line).alignment(Alignment::Center),
+            chunks[25],
+        );
+
         // Render help text
         let help = Line::from(vec![
             Span::styled("↑↓", Style::default().fg(accent_color).bold()),
@@ -661,7 +699,7 @@ impl SettingsDialog {
         ]);
         frame.render_widget(
             Paragraph::new(help).alignment(Alignment::Center),
-            chunks[25],
+            chunks[27],
         );
     }
 

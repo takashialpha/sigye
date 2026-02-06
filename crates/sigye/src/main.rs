@@ -90,6 +90,16 @@ pub struct App {
     pomodoro_last_tick: Instant,
     /// Whether pomodoro timer is running.
     pomodoro_running: bool,
+    /// Timer countdown duration in seconds (configured value).
+    timer_duration_secs: u32,
+    /// Remaining seconds in timer countdown.
+    timer_remaining_secs: u32,
+    /// Whether timer is running.
+    timer_running: bool,
+    /// Last tick time for timer.
+    timer_last_tick: Instant,
+    /// Whether timer has completed (reached zero).
+    timer_completed: bool,
 }
 
 impl App {
@@ -137,6 +147,7 @@ impl App {
 
         // Capture pomodoro work duration before config is moved
         let pomodoro_initial_secs = config.pomodoro_work_mins * 60;
+        let timer_initial_secs = config.timer_duration_mins * 60;
 
         Self {
             running: false,
@@ -166,6 +177,11 @@ impl App {
             pomodoro_sessions_completed: 0,
             pomodoro_last_tick: Instant::now(),
             pomodoro_running: false,
+            timer_duration_secs: timer_initial_secs,
+            timer_remaining_secs: timer_initial_secs,
+            timer_running: false,
+            timer_last_tick: Instant::now(),
+            timer_completed: false,
         }
     }
 
@@ -213,10 +229,19 @@ impl App {
             self.update_flash(&now);
         }
 
-        // Update pomodoro timer
+        // Update timers
         self.update_pomodoro();
+        self.update_timer();
 
         // Branch rendering based on display mode
+        if self.display_mode == DisplayMode::Timer {
+            self.render_timer(frame, elapsed_ms);
+            let color = self.color_theme.color();
+            let area = frame.area();
+            self.settings_dialog.render(frame, area, color);
+            return;
+        }
+
         if self.display_mode == DisplayMode::Pomodoro {
             self.render_pomodoro(frame, elapsed_ms);
             // Render settings dialog if visible
@@ -569,7 +594,7 @@ impl App {
             "q".bold().fg(color),
             " quit  ".dark_gray(),
             "m".bold().fg(color),
-            " clock  ".dark_gray(),
+            " timer  ".dark_gray(),
             "Space".bold().fg(color),
             " start/pause  ".dark_gray(),
             "r".bold().fg(color),
@@ -579,6 +604,136 @@ impl App {
         ])
         .centered();
         frame.render_widget(help, chunks[6]);
+    }
+
+    /// Render the countdown timer display.
+    fn render_timer(&mut self, frame: &mut Frame, elapsed_ms: u64) {
+        let color = self.color_theme.color();
+        let area = frame.area();
+
+        // Format time as MM:SS
+        let mins = self.timer_remaining_secs / 60;
+        let secs = self.timer_remaining_secs % 60;
+        let time_str = format!("{mins:02}:{secs:02}");
+
+        // Get current font and render
+        let font = self.font_registry.get_or_default(&self.current_font);
+        let time_lines = font.render_text(&time_str);
+        let font_height = font.height as u16;
+
+        // Create vertical layout for centering
+        let chunks = Layout::vertical([
+            Constraint::Fill(1),             // Top padding
+            Constraint::Length(font_height), // Timer digits
+            Constraint::Length(2),           // Spacing
+            Constraint::Length(1),           // Status label
+            Constraint::Fill(1),             // Bottom padding
+            Constraint::Length(1),           // Help text
+        ])
+        .split(area);
+
+        // Render big timer
+        let height = time_lines.len();
+        let width = time_lines.first().map(|s| s.chars().count()).unwrap_or(0);
+
+        let chunk = chunks[1];
+        let text_width = width as u16;
+        let start_x = chunk.x + (chunk.width.saturating_sub(text_width)) / 2;
+
+        let buf = frame.buffer_mut();
+        for (line_idx, line) in time_lines.iter().enumerate() {
+            let y_pos = chunk.y + line_idx as u16;
+            if y_pos >= chunk.y + chunk.height {
+                break;
+            }
+
+            for (char_idx, ch) in line.chars().enumerate() {
+                if ch == ' ' {
+                    continue;
+                }
+
+                let x_pos = start_x + char_idx as u16;
+                if x_pos >= chunk.x + chunk.width {
+                    continue;
+                }
+
+                let base_color = if self.color_theme.is_dynamic() {
+                    self.color_theme
+                        .color_at_position(char_idx, line_idx, width, height)
+                } else {
+                    color
+                };
+
+                let animated_color = apply_animation(
+                    base_color,
+                    self.animation_style,
+                    self.animation_speed,
+                    elapsed_ms,
+                    char_idx,
+                    width,
+                    self.flash_intensity,
+                );
+
+                if let Some(cell) = buf.cell_mut(Position::new(x_pos, y_pos)) {
+                    cell.set_char(ch);
+                    cell.set_fg(animated_color);
+                }
+            }
+        }
+
+        // Render status label
+        let label_str = if self.timer_completed {
+            "TIME'S UP".to_string()
+        } else {
+            let dur_mins = self.timer_duration_secs / 60;
+            let dur_secs = self.timer_duration_secs % 60;
+            if self.timer_running {
+                format!("{dur_mins:02}:{dur_secs:02} TIMER")
+            } else {
+                format!("{dur_mins:02}:{dur_secs:02} TIMER (PAUSED)")
+            }
+        };
+        let label_chunk = chunks[3];
+        let label_width = label_str.len() as u16;
+        let label_start_x = label_chunk.x + (label_chunk.width.saturating_sub(label_width)) / 2;
+
+        let label_color = if self.timer_completed {
+            Color::Red
+        } else {
+            color
+        };
+
+        let buf = frame.buffer_mut();
+        for (char_idx, ch) in label_str.chars().enumerate() {
+            if ch == ' ' {
+                continue;
+            }
+            let x_pos = label_start_x + char_idx as u16;
+            if x_pos >= label_chunk.x + label_chunk.width {
+                continue;
+            }
+
+            if let Some(cell) = buf.cell_mut(Position::new(x_pos, label_chunk.y)) {
+                cell.set_char(ch);
+                cell.set_fg(label_color);
+            }
+        }
+
+        // Render timer help text
+        let help = Line::from(vec![
+            "q".bold().fg(color),
+            " quit  ".dark_gray(),
+            "m".bold().fg(color),
+            " clock  ".dark_gray(),
+            "Space".bold().fg(color),
+            " start/pause  ".dark_gray(),
+            "r".bold().fg(color),
+            " reset  ".dark_gray(),
+            "+/-".bold().fg(color),
+            " duration".dark_gray(),
+        ])
+        .centered();
+        frame.render_widget(help, chunks[5]);
     }
 
     /// Update flash intensity for reactive animation.
@@ -662,6 +817,21 @@ impl App {
             (_, KeyCode::Char('n')) if self.display_mode == DisplayMode::Pomodoro => {
                 self.skip_pomodoro_phase()
             }
+            // Timer-specific keys (only active in timer mode)
+            (_, KeyCode::Char(' ')) if self.display_mode == DisplayMode::Timer => {
+                self.toggle_timer()
+            }
+            (_, KeyCode::Char('r')) if self.display_mode == DisplayMode::Timer => {
+                self.reset_timer()
+            }
+            (_, KeyCode::Char('+') | KeyCode::Char('='))
+                if self.display_mode == DisplayMode::Timer =>
+            {
+                self.adjust_timer_duration(1)
+            }
+            (_, KeyCode::Char('-')) if self.display_mode == DisplayMode::Timer => {
+                self.adjust_timer_duration(-1)
+            }
             _ => {}
         }
     }
@@ -708,6 +878,10 @@ impl App {
         self.config.pomodoro_break_mins = self.settings_dialog.pomodoro_break_mins;
         self.config.pomodoro_long_break_mins = self.settings_dialog.pomodoro_long_break_mins;
         self.config.pomodoro_sound = self.settings_dialog.pomodoro_sound;
+        // Update timer duration
+        let new_timer_mins = self.settings_dialog.timer_duration_mins;
+        self.config.timer_duration_mins = new_timer_mins;
+        self.timer_duration_secs = new_timer_mins * 60;
         self.update_background_monitors();
     }
 
@@ -726,6 +900,7 @@ impl App {
             self.config.pomodoro_break_mins,
             self.config.pomodoro_long_break_mins,
             self.config.pomodoro_sound,
+            self.config.timer_duration_mins,
         );
     }
 
@@ -740,7 +915,7 @@ impl App {
         self.config.colon_blink = self.colon_blink;
         self.config.show_seconds = self.show_seconds;
         self.config.background_style = self.background_style;
-        // pomodoro_sound already synced via apply_settings_preview
+        self.config.timer_duration_mins = self.settings_dialog.timer_duration_mins;
 
         if let Err(e) = self.config.save() {
             eprintln!("Warning: Failed to save config: {e}");
@@ -765,6 +940,9 @@ impl App {
         self.config.pomodoro_long_break_mins =
             self.settings_dialog.original_pomodoro_long_break_mins();
         self.config.pomodoro_sound = self.settings_dialog.original_pomodoro_sound();
+        let orig_timer_mins = self.settings_dialog.original_timer_duration_mins();
+        self.config.timer_duration_mins = orig_timer_mins;
+        self.timer_duration_secs = orig_timer_mins * 60;
         self.update_background_monitors();
 
         self.settings_dialog.close();
@@ -817,9 +995,9 @@ impl App {
         self.running = false;
     }
 
-    /// Toggle between clock and pomodoro display modes.
+    /// Cycle between clock, pomodoro, and timer display modes.
     fn toggle_display_mode(&mut self) {
-        self.display_mode = self.display_mode.toggle();
+        self.display_mode = self.display_mode.next();
     }
 
     /// Start or resume the pomodoro timer.
@@ -889,6 +1067,71 @@ impl App {
         }
         // Pause timer after transition (user must start manually)
         self.pomodoro_running = false;
+    }
+
+    /// Update the countdown timer (called each frame).
+    fn update_timer(&mut self) {
+        if !self.timer_running || self.timer_completed {
+            return;
+        }
+
+        let elapsed = self.timer_last_tick.elapsed();
+        if elapsed >= Duration::from_secs(1) {
+            let secs_elapsed = elapsed.as_secs() as u32;
+            self.timer_last_tick = Instant::now();
+
+            if self.timer_remaining_secs > secs_elapsed {
+                self.timer_remaining_secs -= secs_elapsed;
+            } else {
+                self.timer_remaining_secs = 0;
+                self.timer_running = false;
+                self.timer_completed = true;
+                // Trigger alarm
+                self.flash_intensity = 1.0;
+                self.flash_start = Some(Instant::now());
+                if self.config.pomodoro_sound {
+                    print!("\x07");
+                }
+            }
+        }
+    }
+
+    /// Toggle timer start/pause, or restart if completed.
+    fn toggle_timer(&mut self) {
+        if self.timer_completed {
+            // Restart with same duration
+            self.timer_remaining_secs = self.timer_duration_secs;
+            self.timer_completed = false;
+            self.timer_running = true;
+            self.timer_last_tick = Instant::now();
+        } else if self.timer_running {
+            self.timer_running = false;
+        } else {
+            self.timer_running = true;
+            self.timer_last_tick = Instant::now();
+        }
+    }
+
+    /// Reset timer to configured duration.
+    fn reset_timer(&mut self) {
+        self.timer_running = false;
+        self.timer_completed = false;
+        self.timer_remaining_secs = self.timer_duration_secs;
+    }
+
+    /// Adjust timer duration by delta minutes. Clamps to 1–99 minutes.
+    fn adjust_timer_duration(&mut self, delta: i32) {
+        if self.timer_running {
+            return;
+        }
+        let current_mins = (self.timer_duration_secs / 60) as i32;
+        let new_mins = (current_mins + delta).clamp(1, 99) as u32;
+        self.timer_duration_secs = new_mins * 60;
+        self.timer_remaining_secs = self.timer_duration_secs;
+        self.timer_completed = false;
+        // Persist to config
+        self.config.timer_duration_mins = new_mins;
+        let _ = self.config.save();
     }
 
     /// Update the pomodoro timer (called each frame).

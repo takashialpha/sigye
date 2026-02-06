@@ -65,6 +65,10 @@ pub struct Config {
     /// Whether to play terminal bell on pomodoro phase transitions.
     #[serde(default = "default_pomodoro_sound")]
     pub pomodoro_sound: bool,
+
+    /// Timer countdown duration in minutes.
+    #[serde(default = "default_timer_duration_mins")]
+    pub timer_duration_mins: u32,
 }
 
 fn default_font() -> String {
@@ -95,6 +99,10 @@ fn default_pomodoro_sound() -> bool {
     true
 }
 
+fn default_timer_duration_mins() -> u32 {
+    5
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -112,6 +120,7 @@ impl Default for Config {
             pomodoro_long_break_mins: default_pomodoro_long_break_mins(),
             pomodoro_sessions_until_long: default_pomodoro_sessions_until_long(),
             pomodoro_sound: default_pomodoro_sound(),
+            timer_duration_mins: default_timer_duration_mins(),
         }
     }
 }
