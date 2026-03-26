@@ -56,7 +56,7 @@ struct Cli {
     theme: Option<String>,
 
     /// Set the background style
-    #[arg(long, name = "bg")]
+    #[arg(long = "bg", alias = "background")]
     background: Option<String>,
 
     /// Set the display mode (clock, pomodoro, timer, stopwatch, worldclock)

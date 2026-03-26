@@ -1,82 +1,113 @@
-# VHS tape file for sigye demo - Animation Feature Showcase
+# VHS tape file for sigye demo - Full Feature Showcase
 # https://github.com/charmbracelet/vhs
+#
+# Prerequisites: brew install vhs && cargo build --release
+# Usage: cd assets && vhs demo.tape
 
 Output demo.gif
 
 Set Shell "zsh"
-Set FontSize 18
-Set Width 1600
-Set Height 800
+Set FontSize 16
+Set Width 1400
+Set Height 750
 Set Theme "Dracula"
-Set TypingSpeed 50ms
+Set TypingSpeed 0ms
+Set Padding 10
+Set PlaybackSpeed 1
 
-# Start the clock
-Type "sigye"
+# ─────────────────────────────────────────────────
+# SCENE 1: Aurora + Neon — the hero shot
+# ─────────────────────────────────────────────────
+Hide
+Type "../target/release/sigye --bg aurora --theme neon"
 Enter
+Sleep 2s
+Show
+Sleep 3s
+Type "q"
+Sleep 300ms
+
+# ─────────────────────────────────────────────────
+# SCENE 2: Matrix Rain + Fire theme
+# ─────────────────────────────────────────────────
+Hide
+Type "../target/release/sigye --bg matrix --theme fire --font Doom"
+Enter
+Sleep 2s
+Show
+Sleep 3s
+Type "q"
+Sleep 300ms
+
+# ─────────────────────────────────────────────────
+# SCENE 3: Cherry Blossom + Sakura theme
+# ─────────────────────────────────────────────────
+Hide
+Type "../target/release/sigye --bg sakura --theme sakura"
+Enter
+Sleep 2s
+Show
+Sleep 3s
+Type "q"
+Sleep 300ms
+
+# ─────────────────────────────────────────────────
+# SCENE 4: Pomodoro with starfield + animation
+# ─────────────────────────────────────────────────
+Hide
+Type "../target/release/sigye --mode pomodoro --bg starfield --theme rainbow"
+Enter
+Sleep 2s
+Show
+Type "a"
+Sleep 3s
+Type "q"
+Sleep 300ms
+
+# ─────────────────────────────────────────────────
+# SCENE 5: Stopwatch with laps
+# ─────────────────────────────────────────────────
+Hide
+Type "../target/release/sigye --mode stopwatch --bg aurora --theme ocean"
+Enter
+Sleep 2s
+Show
+Type " "
+Sleep 1.5s
+Type "l"
+Sleep 1.5s
+Type "l"
+Sleep 1s
+Type " "
+Sleep 1s
+Type "q"
+Sleep 300ms
+
+# ─────────────────────────────────────────────────
+# SCENE 6: World Clock
+# ─────────────────────────────────────────────────
+Hide
+Type "../target/release/sigye --mode worldclock --bg starfield --theme cool"
+Enter
+Sleep 2s
+Show
+Sleep 3s
+Type "q"
+Sleep 300ms
+
+# ─────────────────────────────────────────────────
+# SCENE 7: Help overlay
+# ─────────────────────────────────────────────────
+Hide
+Type "../target/release/sigye --bg aurora --theme neon"
+Enter
+Sleep 2s
+Show
+Sleep 500ms
+Type "?"
+Sleep 2.5s
+Type " "
 Sleep 1s
 
-# Quick setup: Set Neon theme with Shifting animation
-Type "s"
-Sleep 300ms
-# Go to Color (1x down)
-Down
-Sleep 100ms
-# Cycle to Neon theme (12x right: Cyan->Green->Magenta->Yellow->Red->Blue->White->Rainbow->RainbowV->Warm->Cool->Ocean->Neon)
-Right@100ms 12
-Sleep 100ms
-# Go to Animation (2x down)
-Down
-Sleep 100ms
-Down
-Sleep 100ms
-# Enable Shifting (1x right)
-Right
-Sleep 100ms
-# Go to Speed (1x down) and set to Fast
-Down
-Sleep 100ms
-Right@100ms 2
-Sleep 100ms
-Enter
-
-# SHIFTING ANIMATION - Hue rotation over time
-Sleep 3s
-
-# Switch to PULSING animation
-Type "s"
-Sleep 250ms
-Down@80ms 3
-Right
-Sleep 100ms
-Enter
-
-# PULSING ANIMATION - Brightness pulses rhythmically
-Sleep 3s
-
-# Switch to WAVE animation
-Type "s"
-Sleep 250ms
-Down@80ms 3
-Right
-Sleep 100ms
-Enter
-
-# WAVE ANIMATION - Color wave moves across display
-Sleep 3s
-
-# Switch to Rainbow theme with Wave for variety
-Type "s"
-Sleep 250ms
-Down
-Sleep 80ms
-# Go back to Rainbow (5x left from Neon)
-Left@80ms 5
-Sleep 100ms
-Enter
-
-# Show Rainbow + Wave
-Sleep 2.5s
-
-# Quit
 Type "q"
-Sleep 200ms
+Sleep 300ms
