@@ -744,7 +744,11 @@ impl SettingsDialog {
                 self.render_field("Sound", v, selected, accent_color)
             }
             SettingsField::DesktopNotifications => {
-                let v = if self.desktop_notifications { "On" } else { "Off" };
+                let v = if self.desktop_notifications {
+                    "On"
+                } else {
+                    "Off"
+                };
                 self.render_field("Notifications", v, selected, accent_color)
             }
             SettingsField::TimerDuration => {
@@ -762,26 +766,26 @@ impl SettingsDialog {
         selected: bool,
         accent_color: Color,
     ) -> Line<'static> {
-        let arrow_style = if selected {
-            Style::default().fg(accent_color).bold()
+        if selected {
+            let arrow_style = Style::default().fg(accent_color).bold();
+            let value_style = Style::default().fg(accent_color).bold();
+            let label_style = Style::default().fg(accent_color);
+            Line::from(vec![
+                Span::styled(String::from("► "), arrow_style),
+                Span::styled(format!("{label}: "), label_style),
+                Span::styled(String::from("◀ "), arrow_style),
+                Span::styled(value.to_string(), value_style),
+                Span::styled(String::from(" ▶"), arrow_style),
+            ])
         } else {
-            Style::default().dark_gray()
-        };
-
-        let value_style = if selected {
-            Style::default().fg(accent_color).bold()
-        } else {
-            Style::default()
-        };
-
-        let label_style = Style::default().dark_gray();
-
-        Line::from(vec![
-            Span::styled(format!("{label}: "), label_style),
-            Span::styled(String::from("◀ "), arrow_style),
-            Span::styled(value.to_string(), value_style),
-            Span::styled(String::from(" ▶"), arrow_style),
-        ])
+            let label_style = Style::default().dark_gray();
+            let value_style = Style::default();
+            Line::from(vec![
+                Span::styled(String::from("  "), Style::default()),
+                Span::styled(format!("{label}: "), label_style),
+                Span::styled(value.to_string(), value_style),
+            ])
+        }
     }
 
     /// Render a single settings field line with enabled/disabled state.
@@ -794,13 +798,12 @@ impl SettingsDialog {
         enabled: bool,
     ) -> Line<'static> {
         if !enabled {
-            // Grayed out when disabled
+            // Grayed out when disabled - no arrows
             let gray = Style::default().dark_gray();
             return Line::from(vec![
+                Span::styled(String::from("  "), Style::default()),
                 Span::styled(format!("{label}: "), gray),
-                Span::styled(String::from("◀ "), gray),
                 Span::styled(value.to_string(), gray),
-                Span::styled(String::from(" ▶"), gray),
             ]);
         }
 

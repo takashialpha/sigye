@@ -12,8 +12,8 @@ use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifier
 use ratatui::{
     DefaultTerminal, Frame,
     layout::{Constraint, Layout, Position},
-    style::{Color, Stylize},
-    text::Line,
+    style::{Color, Style, Stylize},
+    text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
 };
 use sigye_config::Config;
@@ -302,20 +302,23 @@ impl App {
         }
 
         if let Some(theme_str) = cli.theme
-            && let Some(theme) = parse_color_theme(&theme_str) {
-                app.color_theme = theme;
-            }
+            && let Some(theme) = parse_color_theme(&theme_str)
+        {
+            app.color_theme = theme;
+        }
 
         if let Some(bg_str) = cli.background
-            && let Some(bg) = parse_background_style(&bg_str) {
-                app.background_style = bg;
-                app.update_background_monitors();
-            }
+            && let Some(bg) = parse_background_style(&bg_str)
+        {
+            app.background_style = bg;
+            app.update_background_monitors();
+        }
 
         if let Some(mode_str) = cli.mode
-            && let Some(mode) = parse_display_mode(&mode_str) {
-                app.display_mode = mode;
-            }
+            && let Some(mode) = parse_display_mode(&mode_str)
+        {
+            app.display_mode = mode;
+        }
 
         if !cli.timezones.is_empty() {
             app.config.world_clock_zones = cli.timezones;
@@ -374,7 +377,10 @@ impl App {
             }
             if self.demo_font_cycle.elapsed() >= Duration::from_secs(30) {
                 let fonts = self.font_registry.list_fonts();
-                let current_idx = fonts.iter().position(|f| f == &self.current_font).unwrap_or(0);
+                let current_idx = fonts
+                    .iter()
+                    .position(|f| f == &self.current_font)
+                    .unwrap_or(0);
                 let next_idx = (current_idx + 1) % fonts.len();
                 self.current_font = fonts[next_idx].to_string();
                 self.demo_font_cycle = Instant::now();
@@ -632,24 +638,13 @@ impl App {
             }
         }
 
-        // Render help text (clock mode) - skip in screensaver mode
+        // Render mode indicator and help text - skip in screensaver mode
         if !self.screensaver_mode {
-            let help = Line::from(vec![
-                "q".bold().fg(color),
-                " quit  ".dark_gray(),
-                "m".bold().fg(color),
-                " mode  ".dark_gray(),
-                "t".bold().fg(color),
-                " 12/24h  ".dark_gray(),
-                "c".bold().fg(color),
-                " color  ".dark_gray(),
-                "s".bold().fg(color),
-                " settings  ".dark_gray(),
-                "?".bold().fg(color),
-                " help".dark_gray(),
-            ])
-            .centered();
-            frame.render_widget(help, chunks[5]);
+            let mode_label = self.render_mode_indicator(color);
+            frame.render_widget(
+                Paragraph::new(mode_label).alignment(ratatui::layout::Alignment::Center),
+                chunks[5],
+            );
         }
 
         // Render settings dialog if visible
@@ -796,61 +791,34 @@ impl App {
             }
         }
 
-        // Render stats line
-        let total_mins = self.pomodoro_total_focus_secs / 60;
-        let hours = total_mins / 60;
-        let mins = total_mins % 60;
+        // Stats line is now replaced by the progress bar rendered below
 
-        let stats_str = if hours > 0 {
-            format!(
-                "Session {} | Total focus: {}h {:02}m",
-                self.pomodoro_sessions_completed, hours, mins
-            )
-        } else {
-            format!(
-                "Session {} | Total focus: {}m",
-                self.pomodoro_sessions_completed, mins
-            )
-        };
-
-        let stats_chunk = chunks[5];
-        let stats_width = stats_str.len() as u16;
-        let stats_start_x =
-            stats_chunk.x + (stats_chunk.width.saturating_sub(stats_width)) / 2;
-
-        let buf = frame.buffer_mut();
-        for (char_idx, ch) in stats_str.chars().enumerate() {
-            if ch == ' ' {
-                continue;
-            }
-            let x_pos = stats_start_x + char_idx as u16;
-            if x_pos >= stats_chunk.x + stats_chunk.width {
-                continue;
-            }
-            if let Some(cell) = buf.cell_mut(Position::new(x_pos, stats_chunk.y)) {
-                cell.set_char(ch);
-                cell.set_fg(Color::DarkGray);
-            }
+        // Render progress bar
+        if !self.screensaver_mode {
+            let total_secs = match self.pomodoro_phase {
+                PomodoroPhase::Work => self.config.pomodoro_work_mins * 60,
+                PomodoroPhase::ShortBreak => self.config.pomodoro_break_mins * 60,
+                PomodoroPhase::LongBreak => self.config.pomodoro_long_break_mins * 60,
+            };
+            let progress = if total_secs > 0 {
+                1.0 - (self.pomodoro_remaining_secs as f64 / total_secs as f64)
+            } else {
+                0.0
+            };
+            let bar = self.render_progress_bar(progress, chunks[5].width.saturating_sub(8), color);
+            frame.render_widget(
+                Paragraph::new(bar).alignment(ratatui::layout::Alignment::Center),
+                chunks[5],
+            );
         }
 
-        // Render pomodoro help text - skip in screensaver mode
+        // Render mode indicator and help text - skip in screensaver mode
         if !self.screensaver_mode {
-            let help = Line::from(vec![
-                "q".bold().fg(color),
-                " quit  ".dark_gray(),
-                "m".bold().fg(color),
-                " mode  ".dark_gray(),
-                "Space".bold().fg(color),
-                " start/pause  ".dark_gray(),
-                "r".bold().fg(color),
-                " reset  ".dark_gray(),
-                "n".bold().fg(color),
-                " skip  ".dark_gray(),
-                "?".bold().fg(color),
-                " help".dark_gray(),
-            ])
-            .centered();
-            frame.render_widget(help, chunks[7]);
+            let mode_label = self.render_mode_indicator(color);
+            frame.render_widget(
+                Paragraph::new(mode_label).alignment(ratatui::layout::Alignment::Center),
+                chunks[7],
+            );
         }
     }
 
@@ -875,6 +843,7 @@ impl App {
             Constraint::Length(font_height), // Timer digits
             Constraint::Length(2),           // Spacing
             Constraint::Length(1),           // Status label
+            Constraint::Length(1),           // Progress bar
             Constraint::Fill(1),             // Bottom padding
             Constraint::Length(1),           // Help text
         ])
@@ -967,24 +936,27 @@ impl App {
             }
         }
 
-        // Render timer help text - skip in screensaver mode
+        // Render progress bar - skip in screensaver mode
+        if !self.screensaver_mode && !self.timer_completed {
+            let progress = if self.timer_duration_secs > 0 {
+                1.0 - (self.timer_remaining_secs as f64 / self.timer_duration_secs as f64)
+            } else {
+                0.0
+            };
+            let bar = self.render_progress_bar(progress, chunks[4].width.saturating_sub(8), color);
+            frame.render_widget(
+                Paragraph::new(bar).alignment(ratatui::layout::Alignment::Center),
+                chunks[4],
+            );
+        }
+
+        // Render mode indicator and help text - skip in screensaver mode
         if !self.screensaver_mode {
-            let help = Line::from(vec![
-                "q".bold().fg(color),
-                " quit  ".dark_gray(),
-                "m".bold().fg(color),
-                " mode  ".dark_gray(),
-                "Space".bold().fg(color),
-                " start/pause  ".dark_gray(),
-                "r".bold().fg(color),
-                " reset  ".dark_gray(),
-                "+/-".bold().fg(color),
-                " duration  ".dark_gray(),
-                "?".bold().fg(color),
-                " help".dark_gray(),
-            ])
-            .centered();
-            frame.render_widget(help, chunks[5]);
+            let mode_label = self.render_mode_indicator(color);
+            frame.render_widget(
+                Paragraph::new(mode_label).alignment(ratatui::layout::Alignment::Center),
+                chunks[6],
+            );
         }
     }
 
@@ -1422,10 +1394,7 @@ impl App {
             std::thread::spawn({
                 let cmd = cmd.clone();
                 move || {
-                    let _ = std::process::Command::new("sh")
-                        .arg("-c")
-                        .arg(&cmd)
-                        .spawn();
+                    let _ = std::process::Command::new("sh").arg("-c").arg(&cmd).spawn();
                 }
             });
         }
@@ -1584,7 +1553,7 @@ impl App {
             }
         }
 
-        // Render centiseconds
+        // Render centiseconds with dimmed theme color
         let cs_chunk = chunks[2];
         let cs_width = cs_str.len() as u16;
         let cs_start_x = cs_chunk.x + (cs_chunk.width.saturating_sub(cs_width)) / 2;
@@ -1597,9 +1566,20 @@ impl App {
             if x_pos >= cs_chunk.x + cs_chunk.width {
                 continue;
             }
+            // Use theme color with slight dimming for visual hierarchy
+            let cs_color = if self.color_theme.is_dynamic() {
+                self.color_theme
+                    .color_at_position(char_idx, 0, cs_str.len(), 1)
+            } else {
+                // Dim the static color slightly
+                match color {
+                    Color::Rgb(r, g, b) => Color::Rgb(r * 3 / 4, g * 3 / 4, b * 3 / 4),
+                    _ => color,
+                }
+            };
             if let Some(cell) = buf.cell_mut(Position::new(x_pos, cs_chunk.y)) {
                 cell.set_char(ch);
-                cell.set_fg(color);
+                cell.set_fg(cs_color);
             }
         }
 
@@ -1613,8 +1593,7 @@ impl App {
         };
         let status_chunk = chunks[3];
         let status_width = status_str.len() as u16;
-        let status_start_x =
-            status_chunk.x + (status_chunk.width.saturating_sub(status_width)) / 2;
+        let status_start_x = status_chunk.x + (status_chunk.width.saturating_sub(status_width)) / 2;
         let status_color = if self.stopwatch_running {
             Color::Green
         } else {
@@ -1696,24 +1675,13 @@ impl App {
             }
         }
 
-        // Render stopwatch help text
+        // Render stopwatch mode indicator and help text
         if !self.screensaver_mode {
-            let help = Line::from(vec![
-                "q".bold().fg(color),
-                " quit  ".dark_gray(),
-                "m".bold().fg(color),
-                " mode  ".dark_gray(),
-                "Space".bold().fg(color),
-                " start/pause  ".dark_gray(),
-                "r".bold().fg(color),
-                " reset  ".dark_gray(),
-                "l".bold().fg(color),
-                " lap  ".dark_gray(),
-                "?".bold().fg(color),
-                " help".dark_gray(),
-            ])
-            .centered();
-            frame.render_widget(help, chunks[6]);
+            let mode_label = self.render_mode_indicator(color);
+            frame.render_widget(
+                Paragraph::new(mode_label).alignment(ratatui::layout::Alignment::Center),
+                chunks[6],
+            );
         }
     }
 
@@ -1757,18 +1725,10 @@ impl App {
             let time_str = if let Ok(tz) = tz_name.parse::<chrono_tz::Tz>() {
                 let local_time = now.with_timezone(&tz);
                 match (self.time_format, self.show_seconds) {
-                    (TimeFormat::TwentyFourHour, true) => {
-                        local_time.format("%H:%M:%S").to_string()
-                    }
-                    (TimeFormat::TwentyFourHour, false) => {
-                        local_time.format("%H:%M").to_string()
-                    }
-                    (TimeFormat::TwelveHour, true) => {
-                        local_time.format("%I:%M:%S %p").to_string()
-                    }
-                    (TimeFormat::TwelveHour, false) => {
-                        local_time.format("%I:%M %p").to_string()
-                    }
+                    (TimeFormat::TwentyFourHour, true) => local_time.format("%H:%M:%S").to_string(),
+                    (TimeFormat::TwentyFourHour, false) => local_time.format("%H:%M").to_string(),
+                    (TimeFormat::TwelveHour, true) => local_time.format("%I:%M:%S %p").to_string(),
+                    (TimeFormat::TwelveHour, false) => local_time.format("%I:%M %p").to_string(),
                 }
             } else {
                 "??:??".to_string()
@@ -1840,24 +1800,13 @@ impl App {
             }
         }
 
-        // Render help text
+        // Render mode indicator and help text
         if !self.screensaver_mode {
-            let help = Line::from(vec![
-                "q".bold().fg(color),
-                " quit  ".dark_gray(),
-                "m".bold().fg(color),
-                " mode  ".dark_gray(),
-                "t".bold().fg(color),
-                " 12/24h  ".dark_gray(),
-                "c".bold().fg(color),
-                " color  ".dark_gray(),
-                "s".bold().fg(color),
-                " settings  ".dark_gray(),
-                "?".bold().fg(color),
-                " help".dark_gray(),
-            ])
-            .centered();
-            frame.render_widget(help, chunks[3]);
+            let mode_label = self.render_mode_indicator(color);
+            frame.render_widget(
+                Paragraph::new(mode_label).alignment(ratatui::layout::Alignment::Center),
+                chunks[3],
+            );
         }
     }
 
@@ -1876,15 +1825,16 @@ impl App {
 
         frame.render_widget(Clear, overlay_area);
 
+        let accent = self.color_theme.color();
         let help_lines = vec![
-            Line::from("Keyboard Shortcuts".bold()).centered(),
+            Line::from("Keyboard Shortcuts".bold().fg(accent)).centered(),
             Line::from(""),
-            Line::from(vec!["  Global".bold().fg(Color::Yellow)]),
+            Line::from(vec![Span::styled(
+                "  Global",
+                Style::default().fg(accent).bold(),
+            )]),
             Line::from(vec!["    q / Esc     ".bold(), "Quit".into()]),
-            Line::from(vec![
-                "    m           ".bold(),
-                "Cycle mode (Clock/Pomodoro/Timer/Stopwatch/World)".into(),
-            ]),
+            Line::from(vec!["    m           ".bold(), "Cycle mode".into()]),
             Line::from(vec!["    t           ".bold(), "Toggle 12/24 hour".into()]),
             Line::from(vec!["    c           ".bold(), "Cycle color theme".into()]),
             Line::from(vec![
@@ -1895,23 +1845,29 @@ impl App {
             Line::from(vec!["    s           ".bold(), "Open settings".into()]),
             Line::from(vec!["    ?           ".bold(), "Toggle this help".into()]),
             Line::from(""),
-            Line::from(vec!["  Pomodoro".bold().fg(Color::Yellow)]),
+            Line::from(vec![Span::styled(
+                "  Pomodoro",
+                Style::default().fg(accent).bold(),
+            )]),
             Line::from(vec!["    Space       ".bold(), "Start / Pause".into()]),
             Line::from(vec![
                 "    r           ".bold(),
                 "Reset current phase".into(),
             ]),
-            Line::from(vec![
-                "    n           ".bold(),
-                "Skip to next phase".into(),
-            ]),
+            Line::from(vec!["    n           ".bold(), "Skip to next phase".into()]),
             Line::from(""),
-            Line::from(vec!["  Timer".bold().fg(Color::Yellow)]),
+            Line::from(vec![Span::styled(
+                "  Timer",
+                Style::default().fg(accent).bold(),
+            )]),
             Line::from(vec!["    Space       ".bold(), "Start / Pause".into()]),
             Line::from(vec!["    r           ".bold(), "Reset".into()]),
             Line::from(vec!["    + / -       ".bold(), "Adjust duration".into()]),
             Line::from(""),
-            Line::from(vec!["  Stopwatch".bold().fg(Color::Yellow)]),
+            Line::from(vec![Span::styled(
+                "  Stopwatch",
+                Style::default().fg(accent).bold(),
+            )]),
             Line::from(vec!["    Space       ".bold(), "Start / Pause".into()]),
             Line::from(vec!["    r           ".bold(), "Reset".into()]),
             Line::from(vec!["    l           ".bold(), "Lap".into()]),
@@ -1922,13 +1878,133 @@ impl App {
         let help_widget = Paragraph::new(help_lines).block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(ratatui::style::Style::default().fg(Color::DarkGray))
+                .border_style(Style::default().fg(accent))
                 .title(" Help ")
                 .title_alignment(ratatui::layout::Alignment::Center)
-                .style(ratatui::style::Style::default().bg(Color::Black)),
+                .style(Style::default().bg(Color::Black)),
         );
 
         frame.render_widget(help_widget, overlay_area);
+    }
+
+    /// Render a unified mode indicator with context-aware key hints.
+    fn render_mode_indicator(&self, accent: Color) -> Line<'static> {
+        let mode_name = self.display_mode.display_name();
+
+        // Build mode dots: highlight current mode in the sequence
+        let mut dots: Vec<Span<'static>> = Vec::new();
+        let all_modes = [
+            DisplayMode::Clock,
+            DisplayMode::Pomodoro,
+            DisplayMode::Timer,
+            DisplayMode::Stopwatch,
+            DisplayMode::WorldClock,
+        ];
+        for (i, mode) in all_modes.iter().enumerate() {
+            if i > 0 {
+                dots.push(Span::styled(" ", Style::default()));
+            }
+            if *mode == self.display_mode {
+                dots.push(Span::styled("●", Style::default().fg(accent)));
+            } else {
+                dots.push(Span::styled("○", Style::default().dark_gray()));
+            }
+        }
+
+        // Build key hints based on mode
+        let mut spans: Vec<Span<'static>> = Vec::new();
+        spans.push(Span::styled(
+            format!(" {mode_name} "),
+            Style::default().fg(accent).bold(),
+        ));
+
+        // Add mode dots
+        spans.extend(dots);
+        spans.push(Span::styled("  ", Style::default()));
+
+        // Mode-specific key hints
+        match self.display_mode {
+            DisplayMode::Clock => {
+                spans.extend(vec![
+                    Span::styled("t", Style::default().fg(accent).bold()),
+                    Span::styled(" 12/24h  ", Style::default().dark_gray()),
+                    Span::styled("c", Style::default().fg(accent).bold()),
+                    Span::styled(" color  ", Style::default().dark_gray()),
+                    Span::styled("s", Style::default().fg(accent).bold()),
+                    Span::styled(" settings  ", Style::default().dark_gray()),
+                    Span::styled("?", Style::default().fg(accent).bold()),
+                    Span::styled(" help", Style::default().dark_gray()),
+                ]);
+            }
+            DisplayMode::Pomodoro => {
+                spans.extend(vec![
+                    Span::styled("Space", Style::default().fg(accent).bold()),
+                    Span::styled(" start/pause  ", Style::default().dark_gray()),
+                    Span::styled("r", Style::default().fg(accent).bold()),
+                    Span::styled(" reset  ", Style::default().dark_gray()),
+                    Span::styled("n", Style::default().fg(accent).bold()),
+                    Span::styled(" skip  ", Style::default().dark_gray()),
+                    Span::styled("?", Style::default().fg(accent).bold()),
+                    Span::styled(" help", Style::default().dark_gray()),
+                ]);
+            }
+            DisplayMode::Timer => {
+                spans.extend(vec![
+                    Span::styled("Space", Style::default().fg(accent).bold()),
+                    Span::styled(" start/pause  ", Style::default().dark_gray()),
+                    Span::styled("r", Style::default().fg(accent).bold()),
+                    Span::styled(" reset  ", Style::default().dark_gray()),
+                    Span::styled("+/-", Style::default().fg(accent).bold()),
+                    Span::styled(" adjust  ", Style::default().dark_gray()),
+                    Span::styled("?", Style::default().fg(accent).bold()),
+                    Span::styled(" help", Style::default().dark_gray()),
+                ]);
+            }
+            DisplayMode::Stopwatch => {
+                spans.extend(vec![
+                    Span::styled("Space", Style::default().fg(accent).bold()),
+                    Span::styled(" start/pause  ", Style::default().dark_gray()),
+                    Span::styled("r", Style::default().fg(accent).bold()),
+                    Span::styled(" reset  ", Style::default().dark_gray()),
+                    Span::styled("l", Style::default().fg(accent).bold()),
+                    Span::styled(" lap  ", Style::default().dark_gray()),
+                    Span::styled("?", Style::default().fg(accent).bold()),
+                    Span::styled(" help", Style::default().dark_gray()),
+                ]);
+            }
+            DisplayMode::WorldClock => {
+                spans.extend(vec![
+                    Span::styled("t", Style::default().fg(accent).bold()),
+                    Span::styled(" 12/24h  ", Style::default().dark_gray()),
+                    Span::styled("c", Style::default().fg(accent).bold()),
+                    Span::styled(" color  ", Style::default().dark_gray()),
+                    Span::styled("s", Style::default().fg(accent).bold()),
+                    Span::styled(" settings  ", Style::default().dark_gray()),
+                    Span::styled("?", Style::default().fg(accent).bold()),
+                    Span::styled(" help", Style::default().dark_gray()),
+                ]);
+            }
+        }
+
+        Line::from(spans)
+    }
+
+    /// Render a text-based progress bar.
+    fn render_progress_bar(&self, progress: f64, width: u16, accent: Color) -> Line<'static> {
+        let bar_width = width as usize;
+        if bar_width == 0 {
+            return Line::from("");
+        }
+        let filled = ((progress * bar_width as f64).round() as usize).min(bar_width);
+        let empty = bar_width - filled;
+
+        let filled_str: String = "━".repeat(filled);
+        let empty_str: String = "─".repeat(empty);
+
+        Line::from(vec![
+            Span::styled(filled_str, Style::default().fg(accent)),
+            Span::styled(empty_str, Style::default().dark_gray()),
+        ])
     }
 
     /// Update the pomodoro timer (called each frame).
