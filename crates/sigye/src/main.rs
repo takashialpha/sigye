@@ -66,6 +66,10 @@ struct Cli {
     /// Add a world clock timezone (e.g., "Tokyo=Asia/Tokyo"). Can be repeated.
     #[arg(long = "tz", value_name = "LABEL=TIMEZONE")]
     timezones: Vec<String>,
+
+    /// Shell command to execute on timer/pomodoro completion
+    #[arg(long)]
+    on_complete: Option<String>,
 }
 
 fn main() -> color_eyre::Result<()> {
@@ -129,6 +133,10 @@ pub struct App {
     pomodoro_remaining_secs: u32,
     /// Number of completed work sessions.
     pomodoro_sessions_completed: u32,
+    /// Total focus time in seconds (accumulated from completed work sessions).
+    pomodoro_total_focus_secs: u64,
+    /// When the current work session started (for tracking).
+    pomodoro_work_start: Option<Instant>,
     /// Last tick time for pomodoro timer.
     pomodoro_last_tick: Instant,
     /// Whether pomodoro timer is running.
@@ -165,6 +173,8 @@ pub struct App {
     demo_bg_cycle: Instant,
     /// Timer for demo mode font cycling.
     demo_font_cycle: Instant,
+    /// Shell command to run on timer/pomodoro completion.
+    on_complete_command: Option<String>,
 }
 
 impl App {
@@ -224,6 +234,7 @@ impl App {
             })
             .collect();
 
+        let on_complete_command = config.on_complete.clone();
         let pomodoro_initial_secs = config.pomodoro_work_mins * 60;
         let timer_initial_secs = config.timer_duration_mins * 60;
 
@@ -253,6 +264,8 @@ impl App {
             pomodoro_phase: PomodoroPhase::default(),
             pomodoro_remaining_secs: pomodoro_initial_secs,
             pomodoro_sessions_completed: 0,
+            pomodoro_total_focus_secs: 0,
+            pomodoro_work_start: None,
             pomodoro_last_tick: Instant::now(),
             pomodoro_running: false,
             timer_duration_secs: timer_initial_secs,
@@ -271,6 +284,7 @@ impl App {
             demo_theme_cycle: Instant::now(),
             demo_bg_cycle: Instant::now(),
             demo_font_cycle: Instant::now(),
+            on_complete_command,
         }
     }
 
@@ -317,6 +331,10 @@ impl App {
                     }
                 })
                 .collect();
+        }
+
+        if cli.on_complete.is_some() {
+            app.on_complete_command = cli.on_complete;
         }
 
         app.screensaver_mode = cli.screensaver;
@@ -661,6 +679,7 @@ impl App {
             Constraint::Length(2),           // Spacing
             Constraint::Length(1),           // Phase indicator
             Constraint::Length(1),           // Session counter
+            Constraint::Length(1),           // Stats line
             Constraint::Fill(1),             // Bottom padding
             Constraint::Length(1),           // Help text
         ])
@@ -777,6 +796,43 @@ impl App {
             }
         }
 
+        // Render stats line
+        let total_mins = self.pomodoro_total_focus_secs / 60;
+        let hours = total_mins / 60;
+        let mins = total_mins % 60;
+
+        let stats_str = if hours > 0 {
+            format!(
+                "Session {} | Total focus: {}h {:02}m",
+                self.pomodoro_sessions_completed, hours, mins
+            )
+        } else {
+            format!(
+                "Session {} | Total focus: {}m",
+                self.pomodoro_sessions_completed, mins
+            )
+        };
+
+        let stats_chunk = chunks[5];
+        let stats_width = stats_str.len() as u16;
+        let stats_start_x =
+            stats_chunk.x + (stats_chunk.width.saturating_sub(stats_width)) / 2;
+
+        let buf = frame.buffer_mut();
+        for (char_idx, ch) in stats_str.chars().enumerate() {
+            if ch == ' ' {
+                continue;
+            }
+            let x_pos = stats_start_x + char_idx as u16;
+            if x_pos >= stats_chunk.x + stats_chunk.width {
+                continue;
+            }
+            if let Some(cell) = buf.cell_mut(Position::new(x_pos, stats_chunk.y)) {
+                cell.set_char(ch);
+                cell.set_fg(Color::DarkGray);
+            }
+        }
+
         // Render pomodoro help text - skip in screensaver mode
         if !self.screensaver_mode {
             let help = Line::from(vec![
@@ -794,7 +850,7 @@ impl App {
                 " help".dark_gray(),
             ])
             .centered();
-            frame.render_widget(help, chunks[6]);
+            frame.render_widget(help, chunks[7]);
         }
     }
 
@@ -1225,6 +1281,9 @@ impl App {
     fn start_pomodoro(&mut self) {
         self.pomodoro_running = true;
         self.pomodoro_last_tick = Instant::now();
+        if self.pomodoro_phase == PomodoroPhase::Work && self.pomodoro_work_start.is_none() {
+            self.pomodoro_work_start = Some(Instant::now());
+        }
     }
 
     /// Pause the pomodoro timer.
@@ -1258,6 +1317,15 @@ impl App {
 
     /// Transition to the next pomodoro phase.
     fn transition_pomodoro_phase(&mut self) {
+        // Track completed work session
+        if self.pomodoro_phase == PomodoroPhase::Work {
+            if let Some(start) = self.pomodoro_work_start.take() {
+                self.pomodoro_total_focus_secs += start.elapsed().as_secs();
+            } else {
+                self.pomodoro_total_focus_secs += (self.config.pomodoro_work_mins * 60) as u64;
+            }
+        }
+
         match self.pomodoro_phase {
             PomodoroPhase::Work => {
                 self.pomodoro_sessions_completed += 1;
@@ -1307,6 +1375,7 @@ impl App {
             };
             send_desktop_notification(title, &body);
         }
+        self.run_on_complete_command();
         // Pause timer after transition (user must start manually)
         self.pomodoro_running = false;
     }
@@ -1342,7 +1411,23 @@ impl App {
                         &format!("{dur_mins:02}:{dur_secs:02} timer has finished"),
                     );
                 }
+                self.run_on_complete_command();
             }
+        }
+    }
+
+    /// Run the on-complete shell command in a background thread if configured.
+    fn run_on_complete_command(&self) {
+        if let Some(ref cmd) = self.on_complete_command {
+            std::thread::spawn({
+                let cmd = cmd.clone();
+                move || {
+                    let _ = std::process::Command::new("sh")
+                        .arg("-c")
+                        .arg(&cmd)
+                        .spawn();
+                }
+            });
         }
     }
 

@@ -78,6 +78,10 @@ pub struct Config {
     /// Each entry is "Label=Timezone" (e.g., "Tokyo=Asia/Tokyo").
     #[serde(default = "default_world_clock_zones")]
     pub world_clock_zones: Vec<String>,
+
+    /// Shell command to execute on timer/pomodoro completion.
+    #[serde(default)]
+    pub on_complete: Option<String>,
 }
 
 fn default_font() -> String {
@@ -144,6 +148,7 @@ impl Default for Config {
             timer_duration_mins: default_timer_duration_mins(),
             desktop_notifications: default_desktop_notifications(),
             world_clock_zones: default_world_clock_zones(),
+            on_complete: None,
         }
     }
 }
