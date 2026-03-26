@@ -4,24 +4,48 @@
 [![License](https://img.shields.io/crates/l/sigye)](https://github.com/am2rican5/sigye/blob/main/LICENSE)
 [![Built With Ratatui](https://img.shields.io/badge/Built_With_Ratatui-000?logo=ratatui&logoColor=fff)](https://ratatui.rs/)
 
-A terminal clock with ASCII art fonts, animated backgrounds, and a built-in Pomodoro timer. The name "sigye" (시계) means "clock" in Korean.
+A feature-rich terminal clock with ASCII art fonts, animated backgrounds, and productivity timers. The name "sigye" (시계) means "clock" in Korean.
 
 ![sigye demo](assets/demo.gif)
 
 ## Features
 
-- **3 display modes** — Clock, Pomodoro timer, and countdown timer
-- **40 bundled FIGlet fonts** — From classic Standard to stylish Star Wars
-- **18 color themes** — Static colors, rainbow gradients, and seasonal palettes
-- **20 animated backgrounds** — Starfield, matrix rain, weather effects, cherry blossoms, and system-reactive visuals
-- **4 animation styles** — Shifting, pulsing, wave, and reactive clock effects
+- **5 display modes** — Clock, Pomodoro, Timer, Stopwatch, and World Clock
+- **40+ bundled FIGlet fonts** — From classic Standard to stylish Star Wars
+- **18 color themes** — 7 static colors and 11 gradient palettes
+- **5 animation styles** — None, Shifting, Pulsing, Wave, and Reactive
+- **20+ animated backgrounds** — Starfield, matrix rain, weather effects, cherry blossoms, and system-reactive visuals
+- **Desktop notifications** — Alerts for Pomodoro phase changes and timer completion
 - **Live weather backgrounds** — Auto-selects rain, snow, fog, or sun based on real conditions via wttr.in
 - **System-reactive backgrounds** — CPU, memory, network, and disk metrics drive visual effects
-- **Blinking colon** — Optional colon separator animation
+- **World Clock** — Display multiple timezones simultaneously
+- **CLI arguments** — Launch directly into any mode, theme, font, or background
+- **Screensaver and demo modes** — Fullscreen ambient display or auto-cycling showcase
 - **12/24 hour format** — Toggle with a single keypress
 - **Live settings preview** — See changes in real time before saving
 - **Persistent configuration** — Settings saved automatically to TOML
 - **Custom font support** — Drop FIGlet `.flf` files into `~/.config/sigye/fonts/`
+
+## How sigye Compares
+
+| Feature | sigye | tty-clock | peaclock | clock-tui | timr-tui |
+|---------|-------|-----------|----------|-----------|----------|
+| Maintained | Active | 2021 | 2020 | Active | Active |
+| Language | Rust | C | C++ | Rust | Rust |
+| Clock | Yes | Yes | Yes | Yes | Yes |
+| Pomodoro | Yes | -- | -- | -- | Yes |
+| Timer | Yes | -- | Yes | Yes | Yes |
+| Stopwatch | Yes | -- | Yes | -- | Yes |
+| World Clock | Yes | -- | -- | -- | -- |
+| FIGlet Fonts | 40+ | 1 | 3 | 1 | 7 |
+| Color Themes | 18 | 8 | 256 | Basic | Basic |
+| Animated Backgrounds | 20+ | -- | -- | -- | -- |
+| Live Weather | Yes | -- | -- | -- | -- |
+| System-Reactive | Yes | -- | -- | -- | -- |
+| Desktop Notifications | Yes | -- | -- | -- | Yes* |
+| Screensaver Mode | Yes | Yes | -- | -- | -- |
+| Config File | TOML | -- | Yes | -- | Yes |
+| Cross-Platform | Yes | Linux | Linux | Yes | Yes |
 
 ## Installation
 
@@ -47,19 +71,46 @@ sigye
 
 Press `s` to open the settings dialog, or use the keybindings below to adjust on the fly.
 
+## CLI Options
+
+```
+sigye [OPTIONS]
+
+Options:
+  --screensaver      Fullscreen ambient mode (no UI chrome)
+  --demo             Auto-cycle themes, backgrounds, and fonts
+  --font <NAME>      Set font (e.g., "Standard", "Banner", "Doom")
+  --theme <NAME>     Set color theme (e.g., "neon", "fire", "aurora")
+  --bg <NAME>        Set background (e.g., "matrix", "aurora", "weather")
+  --mode <MODE>      Set display mode (clock, pomodoro, timer, stopwatch, worldclock)
+  --tz <LABEL=TZ>    Add world clock timezone (repeatable)
+  -h, --help         Print help
+  -V, --version      Print version
+```
+
+### Examples
+
+```bash
+sigye --screensaver --bg aurora --theme neon
+sigye --demo
+sigye --mode worldclock --tz "Seoul=Asia/Seoul" --tz "Berlin=Europe/Berlin"
+sigye --mode pomodoro --font Doom --theme fire
+```
+
 ## Keybindings
 
-### Clock
+### Global
 
 | Key | Action |
 |-----|--------|
 | `q` / `Esc` | Quit |
-| `m` | Cycle display mode (Clock / Pomodoro / Timer) |
+| `m` | Cycle display mode (Clock / Pomodoro / Timer / Stopwatch / World Clock) |
 | `t` | Toggle 12/24 hour format |
 | `c` | Cycle color theme |
 | `a` | Cycle animation style |
 | `b` | Cycle background style |
 | `s` | Open settings dialog |
+| `?` | Show help overlay |
 
 ### Pomodoro Mode
 
@@ -78,14 +129,22 @@ Press `s` to open the settings dialog, or use the keybindings below to adjust on
 | `+` / `=` | Add time |
 | `-` | Subtract time |
 
+### Stopwatch Mode
+
+| Key | Action |
+|-----|--------|
+| `Space` | Pause / resume |
+| `r` | Reset stopwatch |
+| `l` | Record lap |
+
 ### Settings Dialog
 
 | Key | Action |
 |-----|--------|
-| `↑` / `k` | Previous field |
-| `↓` / `j` | Next field |
-| `←` / `h` | Previous value |
-| `→` / `l` | Next value |
+| `Up` / `k` | Previous field |
+| `Down` / `j` | Next field |
+| `Left` / `h` | Previous value |
+| `Right` / `l` | Next value |
 | `Enter` | Save settings |
 | `Esc` | Cancel |
 
@@ -108,6 +167,19 @@ pomodoro_break_mins = 5
 pomodoro_long_break_mins = 15
 pomodoro_sessions_until_long = 4
 pomodoro_sound = true
+```
+
+### World Clock
+
+Add timezones to display in World Clock mode:
+
+```toml
+world_clock_zones = [
+    "New York=America/New_York",
+    "London=Europe/London",
+    "Tokyo=Asia/Tokyo",
+    "Seoul=Asia/Seoul",
+]
 ```
 
 ### Custom Fonts
