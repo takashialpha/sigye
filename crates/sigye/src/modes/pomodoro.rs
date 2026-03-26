@@ -73,7 +73,7 @@ impl PomodoroMode {
         // Determine next phase
         self.phase = if self.phase == PomodoroPhase::Work {
             let long_break_threshold = ctx.config.pomodoro_sessions_until_long;
-            if self.sessions_completed % long_break_threshold == 0 {
+            if self.sessions_completed.is_multiple_of(long_break_threshold) {
                 PomodoroPhase::LongBreak
             } else {
                 PomodoroPhase::ShortBreak

@@ -155,14 +155,8 @@ impl Mode for TimerMode {
         let (status_text, status_color) = if self.completed {
             ("TIME'S UP!", Color::Red)
         } else if !self.running {
-            let dur_mins = self.duration_secs / 60;
-            let dur_secs = self.duration_secs % 60;
-            let _ = format!("{:02}:{:02} TIMER (PAUSED)", dur_mins, dur_secs);
             ("(PAUSED)", Color::DarkGray)
         } else {
-            let dur_mins = self.duration_secs / 60;
-            let dur_secs = self.duration_secs % 60;
-            let _ = format!("{:02}:{:02} TIMER", dur_mins, dur_secs);
             ("RUNNING", ctx.color())
         };
 
