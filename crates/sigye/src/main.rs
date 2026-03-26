@@ -7,12 +7,14 @@ mod weather;
 use std::time::{Duration, Instant};
 
 use chrono::Local;
+use clap::Parser;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{
     DefaultTerminal, Frame,
     layout::{Constraint, Layout, Position},
     style::{Color, Stylize},
     text::Line,
+    widgets::{Block, Borders, Clear, Paragraph},
 };
 use sigye_config::Config;
 use sigye_core::{
@@ -26,10 +28,51 @@ use sigye_background::BackgroundState;
 use system_metrics::SystemMonitor;
 use weather::WeatherMonitor;
 
+fn send_desktop_notification(title: &str, body: &str) {
+    let _ = notify_rust::Notification::new()
+        .summary(title)
+        .body(body)
+        .show();
+}
+
+/// A beautiful terminal clock with ASCII art fonts, animations, and backgrounds.
+#[derive(Parser)]
+#[command(name = "sigye", version, about)]
+struct Cli {
+    /// Start in screensaver mode (fullscreen, no UI chrome)
+    #[arg(long)]
+    screensaver: bool,
+
+    /// Start in demo mode (auto-cycle themes and backgrounds)
+    #[arg(long)]
+    demo: bool,
+
+    /// Set the font name
+    #[arg(long)]
+    font: Option<String>,
+
+    /// Set the color theme
+    #[arg(long)]
+    theme: Option<String>,
+
+    /// Set the background style
+    #[arg(long, name = "bg")]
+    background: Option<String>,
+
+    /// Set the display mode (clock, pomodoro, timer, stopwatch, worldclock)
+    #[arg(long)]
+    mode: Option<String>,
+
+    /// Add a world clock timezone (e.g., "Tokyo=Asia/Tokyo"). Can be repeated.
+    #[arg(long = "tz", value_name = "LABEL=TIMEZONE")]
+    timezones: Vec<String>,
+}
+
 fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
+    let cli = Cli::parse();
     let terminal = ratatui::init();
-    let result = App::new().run(terminal);
+    let result = App::new_with_cli(cli).run(terminal);
     ratatui::restore();
     result
 }
@@ -100,6 +143,28 @@ pub struct App {
     timer_last_tick: Instant,
     /// Whether timer has completed (reached zero).
     timer_completed: bool,
+    /// Stopwatch elapsed time in milliseconds (accumulated).
+    stopwatch_elapsed_ms: u64,
+    /// Whether stopwatch is running.
+    stopwatch_running: bool,
+    /// Last tick time for stopwatch.
+    stopwatch_last_tick: Instant,
+    /// Lap times (stored as elapsed ms at each lap).
+    stopwatch_laps: Vec<u64>,
+    /// Parsed world clock entries: (label, timezone_name).
+    world_clock_entries: Vec<(String, String)>,
+    /// Whether help overlay is visible.
+    show_help: bool,
+    /// Whether screensaver mode is active (hide UI chrome).
+    screensaver_mode: bool,
+    /// Whether demo mode is active (auto-cycle).
+    demo_mode: bool,
+    /// Timer for demo mode theme cycling.
+    demo_theme_cycle: Instant,
+    /// Timer for demo mode background cycling.
+    demo_bg_cycle: Instant,
+    /// Timer for demo mode font cycling.
+    demo_font_cycle: Instant,
 }
 
 impl App {
@@ -146,6 +211,19 @@ impl App {
         };
 
         // Capture pomodoro work duration before config is moved
+        // Parse world clock entries
+        let world_clock_entries: Vec<(String, String)> = config
+            .world_clock_zones
+            .iter()
+            .map(|entry| {
+                if let Some((label, tz)) = entry.split_once('=') {
+                    (label.trim().to_string(), tz.trim().to_string())
+                } else {
+                    (entry.clone(), entry.clone())
+                }
+            })
+            .collect();
+
         let pomodoro_initial_secs = config.pomodoro_work_mins * 60;
         let timer_initial_secs = config.timer_duration_mins * 60;
 
@@ -182,7 +260,75 @@ impl App {
             timer_running: false,
             timer_last_tick: Instant::now(),
             timer_completed: false,
+            stopwatch_elapsed_ms: 0,
+            stopwatch_running: false,
+            stopwatch_last_tick: Instant::now(),
+            stopwatch_laps: Vec::new(),
+            world_clock_entries,
+            show_help: false,
+            screensaver_mode: false,
+            demo_mode: false,
+            demo_theme_cycle: Instant::now(),
+            demo_bg_cycle: Instant::now(),
+            demo_font_cycle: Instant::now(),
         }
+    }
+
+    /// Construct a new instance with CLI overrides applied.
+    fn new_with_cli(cli: Cli) -> Self {
+        let mut app = Self::new();
+
+        if let Some(font_name) = cli.font {
+            let fonts = app.font_registry.list_fonts();
+            if let Some(matched) = fonts.iter().find(|f| f.eq_ignore_ascii_case(&font_name)) {
+                app.current_font = matched.to_string();
+            } else {
+                app.current_font = font_name;
+            }
+        }
+
+        if let Some(theme_str) = cli.theme
+            && let Some(theme) = parse_color_theme(&theme_str) {
+                app.color_theme = theme;
+            }
+
+        if let Some(bg_str) = cli.background
+            && let Some(bg) = parse_background_style(&bg_str) {
+                app.background_style = bg;
+                app.update_background_monitors();
+            }
+
+        if let Some(mode_str) = cli.mode
+            && let Some(mode) = parse_display_mode(&mode_str) {
+                app.display_mode = mode;
+            }
+
+        if !cli.timezones.is_empty() {
+            app.config.world_clock_zones = cli.timezones;
+            app.world_clock_entries = app
+                .config
+                .world_clock_zones
+                .iter()
+                .map(|entry| {
+                    if let Some((label, tz)) = entry.split_once('=') {
+                        (label.trim().to_string(), tz.trim().to_string())
+                    } else {
+                        (entry.clone(), entry.clone())
+                    }
+                })
+                .collect();
+        }
+
+        app.screensaver_mode = cli.screensaver;
+        app.demo_mode = cli.demo;
+
+        // In screensaver mode with no background, default to Aurora
+        if app.screensaver_mode && app.background_style == BackgroundStyle::None {
+            app.background_style = BackgroundStyle::Aurora;
+            app.update_background_monitors();
+        }
+
+        app
     }
 
     /// Run the application's main loop.
@@ -197,6 +343,26 @@ impl App {
 
     /// Renders the user interface.
     fn render(&mut self, frame: &mut Frame) {
+        // Demo mode auto-cycling
+        if self.demo_mode {
+            if self.demo_theme_cycle.elapsed() >= Duration::from_secs(5) {
+                self.color_theme = self.color_theme.next();
+                self.demo_theme_cycle = Instant::now();
+            }
+            if self.demo_bg_cycle.elapsed() >= Duration::from_secs(15) {
+                self.background_style = self.background_style.next();
+                self.update_background_monitors();
+                self.demo_bg_cycle = Instant::now();
+            }
+            if self.demo_font_cycle.elapsed() >= Duration::from_secs(30) {
+                let fonts = self.font_registry.list_fonts();
+                let current_idx = fonts.iter().position(|f| f == &self.current_font).unwrap_or(0);
+                let next_idx = (current_idx + 1) % fonts.len();
+                self.current_font = fonts[next_idx].to_string();
+                self.demo_font_cycle = Instant::now();
+            }
+        }
+
         let now = Local::now();
 
         // Calculate animation elapsed time
@@ -234,20 +400,39 @@ impl App {
         self.update_timer();
 
         // Branch rendering based on display mode
+        if self.display_mode == DisplayMode::WorldClock {
+            self.render_world_clock(frame, elapsed_ms);
+            let color = self.color_theme.color();
+            let area = frame.area();
+            self.settings_dialog.render(frame, area, color);
+            self.render_help_overlay(frame);
+            return;
+        }
+
+        if self.display_mode == DisplayMode::Stopwatch {
+            self.render_stopwatch(frame, elapsed_ms);
+            let color = self.color_theme.color();
+            let area = frame.area();
+            self.settings_dialog.render(frame, area, color);
+            self.render_help_overlay(frame);
+            return;
+        }
+
         if self.display_mode == DisplayMode::Timer {
             self.render_timer(frame, elapsed_ms);
             let color = self.color_theme.color();
             let area = frame.area();
             self.settings_dialog.render(frame, area, color);
+            self.render_help_overlay(frame);
             return;
         }
 
         if self.display_mode == DisplayMode::Pomodoro {
             self.render_pomodoro(frame, elapsed_ms);
-            // Render settings dialog if visible
             let color = self.color_theme.color();
             let area = frame.area();
             self.settings_dialog.render(frame, area, color);
+            self.render_help_overlay(frame);
             return;
         }
 
@@ -387,68 +572,71 @@ impl App {
             }
         }
 
-        // Render date directly to buffer, skipping spaces to preserve background
-        let date_chunk = chunks[3];
-        let date_width = date_str.len() as u16;
-        let date_start_x = date_chunk.x + (date_chunk.width.saturating_sub(date_width)) / 2;
-        let date_y = date_chunk.y;
+        // Render date directly to buffer - skip in screensaver mode
+        if !self.screensaver_mode {
+            let date_chunk = chunks[3];
+            let date_width = date_str.len() as u16;
+            let date_start_x = date_chunk.x + (date_chunk.width.saturating_sub(date_width)) / 2;
+            let date_y = date_chunk.y;
 
-        let buf = frame.buffer_mut();
-        for (char_idx, ch) in date_str.chars().enumerate() {
-            // Skip spaces to preserve background transparency
-            if ch == ' ' {
-                continue;
-            }
+            let buf = frame.buffer_mut();
+            for (char_idx, ch) in date_str.chars().enumerate() {
+                if ch == ' ' {
+                    continue;
+                }
 
-            let x_pos = date_start_x + char_idx as u16;
-            if x_pos >= date_chunk.x + date_chunk.width {
-                continue;
-            }
+                let x_pos = date_start_x + char_idx as u16;
+                if x_pos >= date_chunk.x + date_chunk.width {
+                    continue;
+                }
 
-            // Get base color
-            let base_color = if self.color_theme.is_dynamic() {
-                self.color_theme
-                    .color_at_position(char_idx, 0, date_str.len(), 1)
-            } else {
-                color
-            };
+                let base_color = if self.color_theme.is_dynamic() {
+                    self.color_theme
+                        .color_at_position(char_idx, 0, date_str.len(), 1)
+                } else {
+                    color
+                };
 
-            // Apply animation
-            let animated_color = apply_animation(
-                base_color,
-                self.animation_style,
-                self.animation_speed,
-                elapsed_ms,
-                char_idx,
-                date_str.len(),
-                self.flash_intensity,
-            );
+                let animated_color = apply_animation(
+                    base_color,
+                    self.animation_style,
+                    self.animation_speed,
+                    elapsed_ms,
+                    char_idx,
+                    date_str.len(),
+                    self.flash_intensity,
+                );
 
-            // Write directly to buffer
-            if let Some(cell) = buf.cell_mut(Position::new(x_pos, date_y)) {
-                cell.set_char(ch);
-                cell.set_fg(animated_color);
+                if let Some(cell) = buf.cell_mut(Position::new(x_pos, date_y)) {
+                    cell.set_char(ch);
+                    cell.set_fg(animated_color);
+                }
             }
         }
 
-        // Render help text (clock mode)
-        let help = Line::from(vec![
-            "q".bold().fg(color),
-            " quit  ".dark_gray(),
-            "m".bold().fg(color),
-            " pomodoro  ".dark_gray(),
-            "t".bold().fg(color),
-            " 12/24h  ".dark_gray(),
-            "c".bold().fg(color),
-            " color  ".dark_gray(),
-            "s".bold().fg(color),
-            " settings".dark_gray(),
-        ])
-        .centered();
-        frame.render_widget(help, chunks[5]);
+        // Render help text (clock mode) - skip in screensaver mode
+        if !self.screensaver_mode {
+            let help = Line::from(vec![
+                "q".bold().fg(color),
+                " quit  ".dark_gray(),
+                "m".bold().fg(color),
+                " mode  ".dark_gray(),
+                "t".bold().fg(color),
+                " 12/24h  ".dark_gray(),
+                "c".bold().fg(color),
+                " color  ".dark_gray(),
+                "s".bold().fg(color),
+                " settings  ".dark_gray(),
+                "?".bold().fg(color),
+                " help".dark_gray(),
+            ])
+            .centered();
+            frame.render_widget(help, chunks[5]);
+        }
 
         // Render settings dialog if visible
         self.settings_dialog.render(frame, area, color);
+        self.render_help_overlay(frame);
     }
 
     /// Render the pomodoro timer display.
@@ -589,21 +777,25 @@ impl App {
             }
         }
 
-        // Render pomodoro help text
-        let help = Line::from(vec![
-            "q".bold().fg(color),
-            " quit  ".dark_gray(),
-            "m".bold().fg(color),
-            " timer  ".dark_gray(),
-            "Space".bold().fg(color),
-            " start/pause  ".dark_gray(),
-            "r".bold().fg(color),
-            " reset  ".dark_gray(),
-            "n".bold().fg(color),
-            " skip".dark_gray(),
-        ])
-        .centered();
-        frame.render_widget(help, chunks[6]);
+        // Render pomodoro help text - skip in screensaver mode
+        if !self.screensaver_mode {
+            let help = Line::from(vec![
+                "q".bold().fg(color),
+                " quit  ".dark_gray(),
+                "m".bold().fg(color),
+                " mode  ".dark_gray(),
+                "Space".bold().fg(color),
+                " start/pause  ".dark_gray(),
+                "r".bold().fg(color),
+                " reset  ".dark_gray(),
+                "n".bold().fg(color),
+                " skip  ".dark_gray(),
+                "?".bold().fg(color),
+                " help".dark_gray(),
+            ])
+            .centered();
+            frame.render_widget(help, chunks[6]);
+        }
     }
 
     /// Render the countdown timer display.
@@ -719,21 +911,25 @@ impl App {
             }
         }
 
-        // Render timer help text
-        let help = Line::from(vec![
-            "q".bold().fg(color),
-            " quit  ".dark_gray(),
-            "m".bold().fg(color),
-            " clock  ".dark_gray(),
-            "Space".bold().fg(color),
-            " start/pause  ".dark_gray(),
-            "r".bold().fg(color),
-            " reset  ".dark_gray(),
-            "+/-".bold().fg(color),
-            " duration".dark_gray(),
-        ])
-        .centered();
-        frame.render_widget(help, chunks[5]);
+        // Render timer help text - skip in screensaver mode
+        if !self.screensaver_mode {
+            let help = Line::from(vec![
+                "q".bold().fg(color),
+                " quit  ".dark_gray(),
+                "m".bold().fg(color),
+                " mode  ".dark_gray(),
+                "Space".bold().fg(color),
+                " start/pause  ".dark_gray(),
+                "r".bold().fg(color),
+                " reset  ".dark_gray(),
+                "+/-".bold().fg(color),
+                " duration  ".dark_gray(),
+                "?".bold().fg(color),
+                " help".dark_gray(),
+            ])
+            .centered();
+            frame.render_widget(help, chunks[5]);
+        }
     }
 
     /// Update flash intensity for reactive animation.
@@ -797,6 +993,17 @@ impl App {
             return;
         }
 
+        // Toggle help overlay
+        if key.code == KeyCode::Char('?') {
+            self.show_help = !self.show_help;
+            return;
+        }
+        // Dismiss help on any key if visible
+        if self.show_help {
+            self.show_help = false;
+            return;
+        }
+
         // Main app keybindings
         match (key.modifiers, key.code) {
             (_, KeyCode::Esc | KeyCode::Char('q'))
@@ -831,6 +1038,16 @@ impl App {
             }
             (_, KeyCode::Char('-')) if self.display_mode == DisplayMode::Timer => {
                 self.adjust_timer_duration(-1)
+            }
+            // Stopwatch-specific keys
+            (_, KeyCode::Char(' ')) if self.display_mode == DisplayMode::Stopwatch => {
+                self.toggle_stopwatch()
+            }
+            (_, KeyCode::Char('r')) if self.display_mode == DisplayMode::Stopwatch => {
+                self.reset_stopwatch()
+            }
+            (_, KeyCode::Char('l')) if self.display_mode == DisplayMode::Stopwatch => {
+                self.lap_stopwatch()
             }
             _ => {}
         }
@@ -878,6 +1095,7 @@ impl App {
         self.config.pomodoro_break_mins = self.settings_dialog.pomodoro_break_mins;
         self.config.pomodoro_long_break_mins = self.settings_dialog.pomodoro_long_break_mins;
         self.config.pomodoro_sound = self.settings_dialog.pomodoro_sound;
+        self.config.desktop_notifications = self.settings_dialog.desktop_notifications;
         // Update timer duration
         let new_timer_mins = self.settings_dialog.timer_duration_mins;
         self.config.timer_duration_mins = new_timer_mins;
@@ -900,6 +1118,7 @@ impl App {
             self.config.pomodoro_break_mins,
             self.config.pomodoro_long_break_mins,
             self.config.pomodoro_sound,
+            self.config.desktop_notifications,
             self.config.timer_duration_mins,
         );
     }
@@ -915,6 +1134,7 @@ impl App {
         self.config.colon_blink = self.colon_blink;
         self.config.show_seconds = self.show_seconds;
         self.config.background_style = self.background_style;
+        self.config.desktop_notifications = self.settings_dialog.desktop_notifications;
         self.config.timer_duration_mins = self.settings_dialog.timer_duration_mins;
 
         if let Err(e) = self.config.save() {
@@ -940,6 +1160,7 @@ impl App {
         self.config.pomodoro_long_break_mins =
             self.settings_dialog.original_pomodoro_long_break_mins();
         self.config.pomodoro_sound = self.settings_dialog.original_pomodoro_sound();
+        self.config.desktop_notifications = self.settings_dialog.original_desktop_notifications();
         let orig_timer_mins = self.settings_dialog.original_timer_duration_mins();
         self.config.timer_duration_mins = orig_timer_mins;
         self.timer_duration_secs = orig_timer_mins * 60;
@@ -1065,6 +1286,27 @@ impl App {
         if self.config.pomodoro_sound {
             print!("\x07");
         }
+        // Send desktop notification if enabled
+        if self.config.desktop_notifications {
+            let (title, body) = match self.pomodoro_phase {
+                PomodoroPhase::Work => (
+                    "Pomodoro - Work Time",
+                    format!("Focus for {} minutes", self.config.pomodoro_work_mins),
+                ),
+                PomodoroPhase::ShortBreak => (
+                    "Pomodoro - Short Break",
+                    format!("Take a {} minute break", self.config.pomodoro_break_mins),
+                ),
+                PomodoroPhase::LongBreak => (
+                    "Pomodoro - Long Break",
+                    format!(
+                        "Take a {} minute break! You've earned it.",
+                        self.config.pomodoro_long_break_mins
+                    ),
+                ),
+            };
+            send_desktop_notification(title, &body);
+        }
         // Pause timer after transition (user must start manually)
         self.pomodoro_running = false;
     }
@@ -1091,6 +1333,14 @@ impl App {
                 self.flash_start = Some(Instant::now());
                 if self.config.pomodoro_sound {
                     print!("\x07");
+                }
+                if self.config.desktop_notifications {
+                    let dur_mins = self.timer_duration_secs / 60;
+                    let dur_secs = self.timer_duration_secs % 60;
+                    send_desktop_notification(
+                        "Timer Complete",
+                        &format!("{dur_mins:02}:{dur_secs:02} timer has finished"),
+                    );
                 }
             }
         }
@@ -1134,6 +1384,468 @@ impl App {
         let _ = self.config.save();
     }
 
+    /// Toggle stopwatch start/pause.
+    fn toggle_stopwatch(&mut self) {
+        if self.stopwatch_running {
+            self.stopwatch_elapsed_ms += self.stopwatch_last_tick.elapsed().as_millis() as u64;
+            self.stopwatch_running = false;
+        } else {
+            self.stopwatch_running = true;
+            self.stopwatch_last_tick = Instant::now();
+        }
+    }
+
+    /// Reset the stopwatch to zero.
+    fn reset_stopwatch(&mut self) {
+        self.stopwatch_running = false;
+        self.stopwatch_elapsed_ms = 0;
+        self.stopwatch_laps.clear();
+    }
+
+    /// Record a lap time.
+    fn lap_stopwatch(&mut self) {
+        if self.stopwatch_running {
+            let current =
+                self.stopwatch_elapsed_ms + self.stopwatch_last_tick.elapsed().as_millis() as u64;
+            self.stopwatch_laps.push(current);
+        }
+    }
+
+    /// Get current stopwatch elapsed time in milliseconds.
+    fn get_stopwatch_elapsed(&self) -> u64 {
+        if self.stopwatch_running {
+            self.stopwatch_elapsed_ms + self.stopwatch_last_tick.elapsed().as_millis() as u64
+        } else {
+            self.stopwatch_elapsed_ms
+        }
+    }
+
+    /// Render the stopwatch display.
+    fn render_stopwatch(&mut self, frame: &mut Frame, elapsed_ms: u64) {
+        let color = self.color_theme.color();
+        let area = frame.area();
+
+        let total_ms = self.get_stopwatch_elapsed();
+        let total_secs = total_ms / 1000;
+        let mins = (total_secs / 60) % 100;
+        let secs = total_secs % 60;
+        let centiseconds = (total_ms % 1000) / 10;
+
+        let time_str = format!("{mins:02}:{secs:02}");
+        let cs_str = format!(".{centiseconds:02}");
+
+        let font = self.font_registry.get_or_default(&self.current_font);
+        let time_lines = font.render_text(&time_str);
+        let font_height = font.height as u16;
+
+        let lap_count = self.stopwatch_laps.len().min(5);
+        let lap_height = if lap_count > 0 {
+            lap_count as u16 + 1
+        } else {
+            0
+        };
+
+        let chunks = Layout::vertical([
+            Constraint::Fill(1),
+            Constraint::Length(font_height),
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(lap_height),
+            Constraint::Fill(1),
+            Constraint::Length(1),
+        ])
+        .split(area);
+
+        let height = time_lines.len();
+        let width = time_lines.first().map(|s| s.chars().count()).unwrap_or(0);
+
+        let chunk = chunks[1];
+        let text_width = width as u16;
+        let start_x = chunk.x + (chunk.width.saturating_sub(text_width)) / 2;
+
+        let buf = frame.buffer_mut();
+        for (line_idx, line) in time_lines.iter().enumerate() {
+            let y_pos = chunk.y + line_idx as u16;
+            if y_pos >= chunk.y + chunk.height {
+                break;
+            }
+            for (char_idx, ch) in line.chars().enumerate() {
+                if ch == ' ' {
+                    continue;
+                }
+                let x_pos = start_x + char_idx as u16;
+                if x_pos >= chunk.x + chunk.width {
+                    continue;
+                }
+                let base_color = if self.color_theme.is_dynamic() {
+                    self.color_theme
+                        .color_at_position(char_idx, line_idx, width, height)
+                } else {
+                    color
+                };
+                let animated_color = apply_animation(
+                    base_color,
+                    self.animation_style,
+                    self.animation_speed,
+                    elapsed_ms,
+                    char_idx,
+                    width,
+                    self.flash_intensity,
+                );
+                if let Some(cell) = buf.cell_mut(Position::new(x_pos, y_pos)) {
+                    cell.set_char(ch);
+                    cell.set_fg(animated_color);
+                }
+            }
+        }
+
+        // Render centiseconds
+        let cs_chunk = chunks[2];
+        let cs_width = cs_str.len() as u16;
+        let cs_start_x = cs_chunk.x + (cs_chunk.width.saturating_sub(cs_width)) / 2;
+        let buf = frame.buffer_mut();
+        for (char_idx, ch) in cs_str.chars().enumerate() {
+            if ch == ' ' {
+                continue;
+            }
+            let x_pos = cs_start_x + char_idx as u16;
+            if x_pos >= cs_chunk.x + cs_chunk.width {
+                continue;
+            }
+            if let Some(cell) = buf.cell_mut(Position::new(x_pos, cs_chunk.y)) {
+                cell.set_char(ch);
+                cell.set_fg(color);
+            }
+        }
+
+        // Render status
+        let status_str = if self.stopwatch_running {
+            "RUNNING"
+        } else if self.stopwatch_elapsed_ms == 0 {
+            "STOPPED"
+        } else {
+            "PAUSED"
+        };
+        let status_chunk = chunks[3];
+        let status_width = status_str.len() as u16;
+        let status_start_x =
+            status_chunk.x + (status_chunk.width.saturating_sub(status_width)) / 2;
+        let status_color = if self.stopwatch_running {
+            Color::Green
+        } else {
+            color
+        };
+        let buf = frame.buffer_mut();
+        for (char_idx, ch) in status_str.chars().enumerate() {
+            if ch == ' ' {
+                continue;
+            }
+            let x_pos = status_start_x + char_idx as u16;
+            if x_pos >= status_chunk.x + status_chunk.width {
+                continue;
+            }
+            if let Some(cell) = buf.cell_mut(Position::new(x_pos, status_chunk.y)) {
+                cell.set_char(ch);
+                cell.set_fg(status_color);
+            }
+        }
+
+        // Render lap times (last 5)
+        if !self.stopwatch_laps.is_empty() {
+            let lap_chunk = chunks[4];
+            let total_laps = self.stopwatch_laps.len();
+            let start_idx = total_laps.saturating_sub(5);
+            let visible_laps: Vec<(usize, u64)> = self.stopwatch_laps[start_idx..]
+                .iter()
+                .enumerate()
+                .map(|(i, &ms)| (start_idx + i, ms))
+                .collect();
+
+            for (row, (lap_idx, lap_ms)) in visible_laps.iter().enumerate() {
+                let lap_mins = (*lap_ms / 1000 / 60) % 100;
+                let lap_secs = (*lap_ms / 1000) % 60;
+                let lap_cs = (*lap_ms % 1000) / 10;
+
+                let delta_ms = if *lap_idx > 0 {
+                    lap_ms - self.stopwatch_laps[lap_idx - 1]
+                } else {
+                    *lap_ms
+                };
+                let d_mins = (delta_ms / 1000 / 60) % 100;
+                let d_secs = (delta_ms / 1000) % 60;
+                let d_cs = (delta_ms % 1000) / 10;
+
+                let lap_str = format!(
+                    "Lap {:>2}: {:02}:{:02}.{:02}  (+{:02}:{:02}.{:02})",
+                    lap_idx + 1,
+                    lap_mins,
+                    lap_secs,
+                    lap_cs,
+                    d_mins,
+                    d_secs,
+                    d_cs
+                );
+
+                let lap_text_width = lap_str.len() as u16;
+                let lap_start_x =
+                    lap_chunk.x + (lap_chunk.width.saturating_sub(lap_text_width)) / 2;
+                let y_pos = lap_chunk.y + row as u16;
+                if y_pos >= lap_chunk.y + lap_chunk.height {
+                    break;
+                }
+
+                let buf = frame.buffer_mut();
+                for (char_idx, ch) in lap_str.chars().enumerate() {
+                    if ch == ' ' {
+                        continue;
+                    }
+                    let x_pos = lap_start_x + char_idx as u16;
+                    if x_pos >= lap_chunk.x + lap_chunk.width {
+                        continue;
+                    }
+                    if let Some(cell) = buf.cell_mut(Position::new(x_pos, y_pos)) {
+                        cell.set_char(ch);
+                        cell.set_fg(Color::DarkGray);
+                    }
+                }
+            }
+        }
+
+        // Render stopwatch help text
+        if !self.screensaver_mode {
+            let help = Line::from(vec![
+                "q".bold().fg(color),
+                " quit  ".dark_gray(),
+                "m".bold().fg(color),
+                " mode  ".dark_gray(),
+                "Space".bold().fg(color),
+                " start/pause  ".dark_gray(),
+                "r".bold().fg(color),
+                " reset  ".dark_gray(),
+                "l".bold().fg(color),
+                " lap  ".dark_gray(),
+                "?".bold().fg(color),
+                " help".dark_gray(),
+            ])
+            .centered();
+            frame.render_widget(help, chunks[6]);
+        }
+    }
+
+    /// Render the world clock display showing multiple timezone clocks.
+    fn render_world_clock(&mut self, frame: &mut Frame, elapsed_ms: u64) {
+        let color = self.color_theme.color();
+        let area = frame.area();
+        let now = chrono::Utc::now();
+
+        let entries = &self.world_clock_entries;
+        if entries.is_empty() {
+            return;
+        }
+
+        let font = self.font_registry.get_or_default(&self.current_font);
+        let font_height = font.height as u16;
+
+        // Each zone needs: 1 line for label + font_height for time + 1 line spacing
+        let zone_height = font_height + 2;
+        let total_content_height = zone_height * entries.len() as u16;
+
+        let help_height = if self.screensaver_mode { 0u16 } else { 1 };
+
+        let chunks = Layout::vertical([
+            Constraint::Fill(1),
+            Constraint::Length(total_content_height),
+            Constraint::Fill(1),
+            Constraint::Length(help_height),
+        ])
+        .split(area);
+
+        let content_area = chunks[1];
+
+        for (idx, (label, tz_name)) in entries.iter().enumerate() {
+            let zone_y = content_area.y + (idx as u16 * zone_height);
+            if zone_y + zone_height > content_area.y + content_area.height {
+                break;
+            }
+
+            // Try to parse the timezone and get time
+            let time_str = if let Ok(tz) = tz_name.parse::<chrono_tz::Tz>() {
+                let local_time = now.with_timezone(&tz);
+                match (self.time_format, self.show_seconds) {
+                    (TimeFormat::TwentyFourHour, true) => {
+                        local_time.format("%H:%M:%S").to_string()
+                    }
+                    (TimeFormat::TwentyFourHour, false) => {
+                        local_time.format("%H:%M").to_string()
+                    }
+                    (TimeFormat::TwelveHour, true) => {
+                        local_time.format("%I:%M:%S %p").to_string()
+                    }
+                    (TimeFormat::TwelveHour, false) => {
+                        local_time.format("%I:%M %p").to_string()
+                    }
+                }
+            } else {
+                "??:??".to_string()
+            };
+
+            // Render label centered
+            let label_y = zone_y;
+            let label_width = label.len() as u16;
+            let label_start_x =
+                content_area.x + (content_area.width.saturating_sub(label_width)) / 2;
+
+            let buf = frame.buffer_mut();
+            for (char_idx, ch) in label.chars().enumerate() {
+                if ch == ' ' {
+                    continue;
+                }
+                let x_pos = label_start_x + char_idx as u16;
+                if x_pos >= content_area.x + content_area.width {
+                    continue;
+                }
+                if let Some(cell) = buf.cell_mut(Position::new(x_pos, label_y)) {
+                    cell.set_char(ch);
+                    cell.set_fg(Color::DarkGray);
+                }
+            }
+
+            // Render time in FIGlet font
+            let time_lines = font.render_text(&time_str);
+            let width = time_lines.first().map(|s| s.chars().count()).unwrap_or(0);
+            let height = time_lines.len();
+            let text_width = width as u16;
+            let start_x = content_area.x + (content_area.width.saturating_sub(text_width)) / 2;
+            let time_y = zone_y + 1;
+
+            let buf = frame.buffer_mut();
+            for (line_idx, line) in time_lines.iter().enumerate() {
+                let y_pos = time_y + line_idx as u16;
+                if y_pos >= content_area.y + content_area.height {
+                    break;
+                }
+                for (char_idx, ch) in line.chars().enumerate() {
+                    if ch == ' ' {
+                        continue;
+                    }
+                    let x_pos = start_x + char_idx as u16;
+                    if x_pos >= content_area.x + content_area.width {
+                        continue;
+                    }
+                    let base_color = if self.color_theme.is_dynamic() {
+                        self.color_theme
+                            .color_at_position(char_idx, line_idx, width, height)
+                    } else {
+                        color
+                    };
+                    let animated_color = apply_animation(
+                        base_color,
+                        self.animation_style,
+                        self.animation_speed,
+                        elapsed_ms,
+                        char_idx,
+                        width,
+                        self.flash_intensity,
+                    );
+                    if let Some(cell) = buf.cell_mut(Position::new(x_pos, y_pos)) {
+                        cell.set_char(ch);
+                        cell.set_fg(animated_color);
+                    }
+                }
+            }
+        }
+
+        // Render help text
+        if !self.screensaver_mode {
+            let help = Line::from(vec![
+                "q".bold().fg(color),
+                " quit  ".dark_gray(),
+                "m".bold().fg(color),
+                " mode  ".dark_gray(),
+                "t".bold().fg(color),
+                " 12/24h  ".dark_gray(),
+                "c".bold().fg(color),
+                " color  ".dark_gray(),
+                "s".bold().fg(color),
+                " settings  ".dark_gray(),
+                "?".bold().fg(color),
+                " help".dark_gray(),
+            ])
+            .centered();
+            frame.render_widget(help, chunks[3]);
+        }
+    }
+
+    /// Render the help overlay showing all keybindings.
+    fn render_help_overlay(&self, frame: &mut Frame) {
+        if !self.show_help {
+            return;
+        }
+
+        let area = frame.area();
+        let width = 56u16.min(area.width.saturating_sub(4));
+        let height = 28u16.min(area.height.saturating_sub(2));
+        let x = (area.width.saturating_sub(width)) / 2;
+        let y = (area.height.saturating_sub(height)) / 2;
+        let overlay_area = ratatui::layout::Rect::new(x, y, width, height);
+
+        frame.render_widget(Clear, overlay_area);
+
+        let help_lines = vec![
+            Line::from("Keyboard Shortcuts".bold()).centered(),
+            Line::from(""),
+            Line::from(vec!["  Global".bold().fg(Color::Yellow)]),
+            Line::from(vec!["    q / Esc     ".bold(), "Quit".into()]),
+            Line::from(vec![
+                "    m           ".bold(),
+                "Cycle mode (Clock/Pomodoro/Timer/Stopwatch/World)".into(),
+            ]),
+            Line::from(vec!["    t           ".bold(), "Toggle 12/24 hour".into()]),
+            Line::from(vec!["    c           ".bold(), "Cycle color theme".into()]),
+            Line::from(vec![
+                "    a           ".bold(),
+                "Cycle animation style".into(),
+            ]),
+            Line::from(vec!["    b           ".bold(), "Cycle background".into()]),
+            Line::from(vec!["    s           ".bold(), "Open settings".into()]),
+            Line::from(vec!["    ?           ".bold(), "Toggle this help".into()]),
+            Line::from(""),
+            Line::from(vec!["  Pomodoro".bold().fg(Color::Yellow)]),
+            Line::from(vec!["    Space       ".bold(), "Start / Pause".into()]),
+            Line::from(vec![
+                "    r           ".bold(),
+                "Reset current phase".into(),
+            ]),
+            Line::from(vec![
+                "    n           ".bold(),
+                "Skip to next phase".into(),
+            ]),
+            Line::from(""),
+            Line::from(vec!["  Timer".bold().fg(Color::Yellow)]),
+            Line::from(vec!["    Space       ".bold(), "Start / Pause".into()]),
+            Line::from(vec!["    r           ".bold(), "Reset".into()]),
+            Line::from(vec!["    + / -       ".bold(), "Adjust duration".into()]),
+            Line::from(""),
+            Line::from(vec!["  Stopwatch".bold().fg(Color::Yellow)]),
+            Line::from(vec!["    Space       ".bold(), "Start / Pause".into()]),
+            Line::from(vec!["    r           ".bold(), "Reset".into()]),
+            Line::from(vec!["    l           ".bold(), "Lap".into()]),
+            Line::from(""),
+            Line::from("Press any key to close".dark_gray()).centered(),
+        ];
+
+        let help_widget = Paragraph::new(help_lines).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(ratatui::style::Style::default().fg(Color::DarkGray))
+                .title(" Help ")
+                .title_alignment(ratatui::layout::Alignment::Center)
+                .style(ratatui::style::Style::default().bg(Color::Black)),
+        );
+
+        frame.render_widget(help_widget, overlay_area);
+    }
+
     /// Update the pomodoro timer (called each frame).
     fn update_pomodoro(&mut self) {
         if !self.pomodoro_running {
@@ -1158,5 +1870,73 @@ impl App {
 impl Default for App {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Parse a string into a ColorTheme (case-insensitive).
+fn parse_color_theme(s: &str) -> Option<ColorTheme> {
+    let lower = s.to_lowercase();
+    match lower.as_str() {
+        "cyan" => Some(ColorTheme::Cyan),
+        "green" => Some(ColorTheme::Green),
+        "white" => Some(ColorTheme::White),
+        "magenta" => Some(ColorTheme::Magenta),
+        "yellow" => Some(ColorTheme::Yellow),
+        "red" => Some(ColorTheme::Red),
+        "blue" => Some(ColorTheme::Blue),
+        "rainbow" => Some(ColorTheme::Rainbow),
+        "rainbowvertical" | "rainbow-vertical" => Some(ColorTheme::RainbowVertical),
+        "gradientwarm" | "gradient-warm" | "warm" => Some(ColorTheme::GradientWarm),
+        "gradientcool" | "gradient-cool" | "cool" => Some(ColorTheme::GradientCool),
+        "gradientocean" | "gradient-ocean" | "ocean" => Some(ColorTheme::GradientOcean),
+        "gradientneon" | "gradient-neon" | "neon" => Some(ColorTheme::GradientNeon),
+        "gradientfire" | "gradient-fire" | "fire" => Some(ColorTheme::GradientFire),
+        "gradientfrost" | "gradient-frost" | "frost" => Some(ColorTheme::GradientFrost),
+        "gradientaurora" | "gradient-aurora" | "aurora" => Some(ColorTheme::GradientAurora),
+        "gradientwinter" | "gradient-winter" | "winter" => Some(ColorTheme::GradientWinter),
+        "gradientsakura" | "gradient-sakura" | "sakura" => Some(ColorTheme::GradientSakura),
+        _ => None,
+    }
+}
+
+/// Parse a string into a BackgroundStyle (case-insensitive).
+fn parse_background_style(s: &str) -> Option<BackgroundStyle> {
+    let lower = s.to_lowercase();
+    match lower.as_str() {
+        "none" => Some(BackgroundStyle::None),
+        "starfield" | "stars" => Some(BackgroundStyle::Starfield),
+        "matrix" | "matrixrain" | "matrix-rain" => Some(BackgroundStyle::MatrixRain),
+        "gradient" | "gradientwave" | "gradient-wave" => Some(BackgroundStyle::GradientWave),
+        "snowfall" | "snow" => Some(BackgroundStyle::Snowfall),
+        "frost" => Some(BackgroundStyle::Frost),
+        "aurora" => Some(BackgroundStyle::Aurora),
+        "sunny" | "sun" => Some(BackgroundStyle::Sunny),
+        "rainy" | "rain" => Some(BackgroundStyle::Rainy),
+        "stormy" | "storm" => Some(BackgroundStyle::Stormy),
+        "windy" | "wind" => Some(BackgroundStyle::Windy),
+        "cloudy" | "clouds" => Some(BackgroundStyle::Cloudy),
+        "foggy" | "fog" => Some(BackgroundStyle::Foggy),
+        "weather" => Some(BackgroundStyle::Weather),
+        "dawn" | "twilightdawn" | "twilight-dawn" => Some(BackgroundStyle::TwilightDawn),
+        "dusk" | "twilightdusk" | "twilight-dusk" => Some(BackgroundStyle::TwilightDusk),
+        "cherryblossom" | "cherry-blossom" | "sakura" => Some(BackgroundStyle::CherryBlossom),
+        "systempulse" | "system-pulse" | "pulse" => Some(BackgroundStyle::SystemPulse),
+        "resourcewave" | "resource-wave" | "resource" => Some(BackgroundStyle::ResourceWave),
+        "dataflow" | "data-flow" => Some(BackgroundStyle::DataFlow),
+        "heatmap" | "heat-map" | "heat" => Some(BackgroundStyle::HeatMap),
+        _ => None,
+    }
+}
+
+/// Parse a string into a DisplayMode (case-insensitive).
+fn parse_display_mode(s: &str) -> Option<DisplayMode> {
+    let lower = s.to_lowercase();
+    match lower.as_str() {
+        "clock" => Some(DisplayMode::Clock),
+        "pomodoro" => Some(DisplayMode::Pomodoro),
+        "timer" => Some(DisplayMode::Timer),
+        "stopwatch" => Some(DisplayMode::Stopwatch),
+        "worldclock" | "world-clock" | "world" => Some(DisplayMode::WorldClock),
+        _ => None,
     }
 }

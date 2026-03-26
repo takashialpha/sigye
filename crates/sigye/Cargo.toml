@@ -24,3 +24,6 @@ sysinfo.workspace = true
 ureq.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+clap = { version = "4", features = ["derive"] }
+notify-rust.workspace = true
+chrono-tz.workspace = true

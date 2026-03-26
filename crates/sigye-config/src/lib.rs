@@ -69,6 +69,15 @@ pub struct Config {
     /// Timer countdown duration in minutes.
     #[serde(default = "default_timer_duration_mins")]
     pub timer_duration_mins: u32,
+
+    /// Whether to show desktop notifications on timer events.
+    #[serde(default = "default_desktop_notifications")]
+    pub desktop_notifications: bool,
+
+    /// List of timezone entries for world clock mode.
+    /// Each entry is "Label=Timezone" (e.g., "Tokyo=Asia/Tokyo").
+    #[serde(default = "default_world_clock_zones")]
+    pub world_clock_zones: Vec<String>,
 }
 
 fn default_font() -> String {
@@ -103,6 +112,18 @@ fn default_timer_duration_mins() -> u32 {
     5
 }
 
+fn default_desktop_notifications() -> bool {
+    true
+}
+
+fn default_world_clock_zones() -> Vec<String> {
+    vec![
+        "New York=America/New_York".to_string(),
+        "London=Europe/London".to_string(),
+        "Tokyo=Asia/Tokyo".to_string(),
+    ]
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -121,6 +142,8 @@ impl Default for Config {
             pomodoro_sessions_until_long: default_pomodoro_sessions_until_long(),
             pomodoro_sound: default_pomodoro_sound(),
             timer_duration_mins: default_timer_duration_mins(),
+            desktop_notifications: default_desktop_notifications(),
+            world_clock_zones: default_world_clock_zones(),
         }
     }
 }

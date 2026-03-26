@@ -25,6 +25,7 @@ pub enum SettingsField {
     PomodoroBreak,
     PomodoroLongBreak,
     PomodoroSound,
+    DesktopNotifications,
     TimerDuration,
 }
 
@@ -43,7 +44,8 @@ impl SettingsField {
             Self::PomodoroWork => Self::PomodoroBreak,
             Self::PomodoroBreak => Self::PomodoroLongBreak,
             Self::PomodoroLongBreak => Self::PomodoroSound,
-            Self::PomodoroSound => Self::TimerDuration,
+            Self::PomodoroSound => Self::DesktopNotifications,
+            Self::DesktopNotifications => Self::TimerDuration,
             Self::TimerDuration => Self::Font,
         }
     }
@@ -52,7 +54,8 @@ impl SettingsField {
     pub fn prev(self) -> Self {
         match self {
             Self::Font => Self::TimerDuration,
-            Self::TimerDuration => Self::PomodoroSound,
+            Self::TimerDuration => Self::DesktopNotifications,
+            Self::DesktopNotifications => Self::PomodoroSound,
             Self::PomodoroSound => Self::PomodoroLongBreak,
             Self::Color => Self::Font,
             Self::TimeFormat => Self::Color,
@@ -110,6 +113,8 @@ pub struct SettingsDialog {
     pub pomodoro_long_break_mins: u32,
     /// Pomodoro sound notification setting.
     pub pomodoro_sound: bool,
+    /// Desktop notifications setting.
+    pub desktop_notifications: bool,
     /// Timer countdown duration in minutes.
     pub timer_duration_mins: u32,
     /// Original font index (for cancel/revert).
@@ -136,6 +141,8 @@ pub struct SettingsDialog {
     original_pomodoro_long_break_mins: u32,
     /// Original pomodoro sound (for cancel/revert).
     original_pomodoro_sound: bool,
+    /// Original desktop notifications (for cancel/revert).
+    original_desktop_notifications: bool,
     /// Original timer duration (for cancel/revert).
     original_timer_duration_mins: u32,
 }
@@ -160,6 +167,7 @@ impl SettingsDialog {
             pomodoro_break_mins: 5,
             pomodoro_long_break_mins: 15,
             pomodoro_sound: true,
+            desktop_notifications: true,
             timer_duration_mins: 5,
             original_font_index: 0,
             original_color_theme: ColorTheme::default(),
@@ -173,6 +181,7 @@ impl SettingsDialog {
             original_pomodoro_break_mins: 5,
             original_pomodoro_long_break_mins: 15,
             original_pomodoro_sound: true,
+            original_desktop_notifications: true,
             original_timer_duration_mins: 5,
         }
     }
@@ -193,6 +202,7 @@ impl SettingsDialog {
         pomodoro_break_mins: u32,
         pomodoro_long_break_mins: u32,
         pomodoro_sound: bool,
+        desktop_notifications: bool,
         timer_duration_mins: u32,
     ) {
         self.visible = true;
@@ -209,6 +219,7 @@ impl SettingsDialog {
         self.pomodoro_break_mins = pomodoro_break_mins;
         self.pomodoro_long_break_mins = pomodoro_long_break_mins;
         self.pomodoro_sound = pomodoro_sound;
+        self.desktop_notifications = desktop_notifications;
         self.timer_duration_mins = timer_duration_mins;
 
         // Find font index
@@ -231,6 +242,7 @@ impl SettingsDialog {
         self.original_pomodoro_break_mins = pomodoro_break_mins;
         self.original_pomodoro_long_break_mins = pomodoro_long_break_mins;
         self.original_pomodoro_sound = pomodoro_sound;
+        self.original_desktop_notifications = desktop_notifications;
         self.original_timer_duration_mins = timer_duration_mins;
     }
 
@@ -302,6 +314,11 @@ impl SettingsDialog {
         self.original_pomodoro_sound
     }
 
+    /// Get original desktop notifications (for reverting on cancel).
+    pub fn original_desktop_notifications(&self) -> bool {
+        self.original_desktop_notifications
+    }
+
     /// Get original timer duration (for reverting on cancel).
     pub fn original_timer_duration_mins(&self) -> u32 {
         self.original_timer_duration_mins
@@ -337,6 +354,7 @@ impl SettingsDialog {
             RowKind::Field(SettingsField::PomodoroBreak),
             RowKind::Field(SettingsField::PomodoroLongBreak),
             RowKind::Field(SettingsField::PomodoroSound),
+            RowKind::Field(SettingsField::DesktopNotifications),
             RowKind::Spacer,
             RowKind::Header("Timer"),
             RowKind::Field(SettingsField::TimerDuration),
@@ -426,6 +444,9 @@ impl SettingsDialog {
             SettingsField::PomodoroSound => {
                 self.pomodoro_sound = !self.pomodoro_sound;
             }
+            SettingsField::DesktopNotifications => {
+                self.desktop_notifications = !self.desktop_notifications;
+            }
             SettingsField::TimerDuration => {
                 self.timer_duration_mins = (self.timer_duration_mins + 1).min(99);
             }
@@ -500,6 +521,9 @@ impl SettingsDialog {
             }
             SettingsField::PomodoroSound => {
                 self.pomodoro_sound = !self.pomodoro_sound;
+            }
+            SettingsField::DesktopNotifications => {
+                self.desktop_notifications = !self.desktop_notifications;
             }
             SettingsField::TimerDuration => {
                 self.timer_duration_mins = (self.timer_duration_mins.saturating_sub(1)).max(1);
@@ -718,6 +742,10 @@ impl SettingsDialog {
             SettingsField::PomodoroSound => {
                 let v = if self.pomodoro_sound { "On" } else { "Off" };
                 self.render_field("Sound", v, selected, accent_color)
+            }
+            SettingsField::DesktopNotifications => {
+                let v = if self.desktop_notifications { "On" } else { "Off" };
+                self.render_field("Notifications", v, selected, accent_color)
             }
             SettingsField::TimerDuration => {
                 let v = format!("{} min", self.timer_duration_mins);
