@@ -3,7 +3,7 @@
 use ratatui::{
     Frame,
     layout::{Position, Rect},
-    style::{Color, Style, Stylize},
+    style::{Color, Style},
     text::{Line, Span},
 };
 use sigye_core::{apply_animation, is_colon_visible, AnimationSpeed, AnimationStyle, ColorTheme};
