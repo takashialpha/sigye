@@ -1,5 +1,9 @@
 //! sigye - A terminal clock application with configurable fonts.
 
+mod context;
+mod mode;
+mod modes;
+mod render;
 mod settings;
 mod system_metrics;
 mod weather;
