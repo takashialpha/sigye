@@ -15,7 +15,7 @@ use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifier
 use ratatui::{
     DefaultTerminal, Frame,
     layout::Alignment,
-    style::{Color, Style, Stylize},
+    style::{Color, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
 };
@@ -641,53 +641,59 @@ impl App {
         frame.render_widget(Clear, overlay_area);
 
         let accent = self.ctx.color();
-        let help_lines = vec![
-            Line::from("Keyboard Shortcuts".bold().fg(accent)).centered(),
-            Line::from(""),
-            Line::from(vec![Span::styled(
-                "  Global",
-                Style::default().fg(accent).bold(),
-            )]),
-            Line::from(vec!["    q / Esc     ".bold(), "Quit".into()]),
-            Line::from(vec!["    m           ".bold(), "Cycle mode".into()]),
-            Line::from(vec!["    t           ".bold(), "Toggle 12/24 hour".into()]),
-            Line::from(vec!["    c           ".bold(), "Cycle color theme".into()]),
+        let fg = Color::White;
+        let dim = Color::Gray;
+
+        let key_line = |key: &'static str, desc: &'static str| -> Line<'static> {
             Line::from(vec![
-                "    a           ".bold(),
-                "Cycle animation style".into(),
-            ]),
-            Line::from(vec!["    b           ".bold(), "Cycle background".into()]),
-            Line::from(vec!["    s           ".bold(), "Open settings".into()]),
-            Line::from(vec!["    ?           ".bold(), "Toggle this help".into()]),
+                Span::styled(key, Style::default().fg(fg).bold()),
+                Span::styled(desc, Style::default().fg(dim)),
+            ])
+        };
+
+        let help_lines = vec![
+            Line::from(Span::styled(
+                "Keyboard Shortcuts",
+                Style::default().fg(accent).bold(),
+            ))
+            .centered(),
             Line::from(""),
-            Line::from(vec![Span::styled(
+            Line::from(Span::styled("  Global", Style::default().fg(accent).bold())),
+            key_line("    q / Esc     ", "Quit"),
+            key_line("    m           ", "Cycle mode"),
+            key_line("    t           ", "Toggle 12/24 hour"),
+            key_line("    c           ", "Cycle color theme"),
+            key_line("    a           ", "Cycle animation style"),
+            key_line("    b           ", "Cycle background"),
+            key_line("    s           ", "Open settings"),
+            key_line("    ?           ", "Toggle this help"),
+            Line::from(""),
+            Line::from(Span::styled(
                 "  Pomodoro",
                 Style::default().fg(accent).bold(),
-            )]),
-            Line::from(vec!["    Space       ".bold(), "Start / Pause".into()]),
-            Line::from(vec![
-                "    r           ".bold(),
-                "Reset current phase".into(),
-            ]),
-            Line::from(vec!["    n           ".bold(), "Skip to next phase".into()]),
+            )),
+            key_line("    Space       ", "Start / Pause"),
+            key_line("    r           ", "Reset current phase"),
+            key_line("    n           ", "Skip to next phase"),
             Line::from(""),
-            Line::from(vec![Span::styled(
-                "  Timer",
-                Style::default().fg(accent).bold(),
-            )]),
-            Line::from(vec!["    Space       ".bold(), "Start / Pause".into()]),
-            Line::from(vec!["    r           ".bold(), "Reset".into()]),
-            Line::from(vec!["    + / -       ".bold(), "Adjust duration".into()]),
+            Line::from(Span::styled("  Timer", Style::default().fg(accent).bold())),
+            key_line("    Space       ", "Start / Pause"),
+            key_line("    r           ", "Reset"),
+            key_line("    + / -       ", "Adjust duration"),
             Line::from(""),
-            Line::from(vec![Span::styled(
+            Line::from(Span::styled(
                 "  Stopwatch",
                 Style::default().fg(accent).bold(),
-            )]),
-            Line::from(vec!["    Space       ".bold(), "Start / Pause".into()]),
-            Line::from(vec!["    r           ".bold(), "Reset".into()]),
-            Line::from(vec!["    l           ".bold(), "Lap".into()]),
+            )),
+            key_line("    Space       ", "Start / Pause"),
+            key_line("    r           ", "Reset"),
+            key_line("    l           ", "Lap"),
             Line::from(""),
-            Line::from("Press any key to close".dark_gray()).centered(),
+            Line::from(Span::styled(
+                "Press any key to close",
+                Style::default().fg(dim),
+            ))
+            .centered(),
         ];
 
         let help_widget = Paragraph::new(help_lines).block(
@@ -696,7 +702,7 @@ impl App {
                 .border_style(Style::default().fg(accent))
                 .title(" Help ")
                 .title_alignment(Alignment::Center)
-                .style(Style::default().bg(Color::Black)),
+                .style(Style::default().fg(fg).bg(Color::Black)),
         );
 
         frame.render_widget(help_widget, overlay_area);

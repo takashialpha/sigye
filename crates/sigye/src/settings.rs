@@ -560,12 +560,13 @@ impl SettingsDialog {
         // Clear the area behind the dialog
         frame.render_widget(Clear, dialog_area);
 
-        // Create block with border
+        // Create block with border and explicit colors for light theme support
         let block = Block::default()
             .title(" Settings ")
             .title_alignment(Alignment::Center)
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(accent_color));
+            .border_style(Style::default().fg(accent_color))
+            .style(Style::default().fg(Color::White).bg(Color::Black));
 
         let inner_area = block.inner(dialog_area);
         frame.render_widget(block, dialog_area);
@@ -661,13 +662,13 @@ impl SettingsDialog {
         // Render help text
         let help = Line::from(vec![
             Span::styled("↑↓", Style::default().fg(accent_color).bold()),
-            Span::styled(" nav  ", Style::default().dark_gray()),
+            Span::styled(" nav  ", Style::default().fg(Color::Gray)),
             Span::styled("←→", Style::default().fg(accent_color).bold()),
-            Span::styled(" change  ", Style::default().dark_gray()),
+            Span::styled(" change  ", Style::default().fg(Color::Gray)),
             Span::styled("Enter", Style::default().fg(accent_color).bold()),
-            Span::styled(" save  ", Style::default().dark_gray()),
+            Span::styled(" save  ", Style::default().fg(Color::Gray)),
             Span::styled("Esc", Style::default().fg(accent_color).bold()),
-            Span::styled(" cancel", Style::default().dark_gray()),
+            Span::styled(" cancel", Style::default().fg(Color::Gray)),
         ]);
         frame.render_widget(Paragraph::new(help).alignment(Alignment::Center), chunks[3]);
     }
@@ -778,8 +779,8 @@ impl SettingsDialog {
                 Span::styled(String::from(" ▶"), arrow_style),
             ])
         } else {
-            let label_style = Style::default().dark_gray();
-            let value_style = Style::default();
+            let label_style = Style::default().fg(Color::Gray);
+            let value_style = Style::default().fg(Color::White);
             Line::from(vec![
                 Span::styled(String::from("  "), Style::default()),
                 Span::styled(format!("{label}: "), label_style),
@@ -799,7 +800,7 @@ impl SettingsDialog {
     ) -> Line<'static> {
         if !enabled {
             // Grayed out when disabled - no arrows
-            let gray = Style::default().dark_gray();
+            let gray = Style::default().fg(Color::DarkGray);
             return Line::from(vec![
                 Span::styled(String::from("  "), Style::default()),
                 Span::styled(format!("{label}: "), gray),
