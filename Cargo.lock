@@ -2185,7 +2185,7 @@ dependencies = [
 
 [[package]]
 name = "sigye"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "chrono",
  "chrono-tz",
@@ -2206,7 +2206,7 @@ dependencies = [
 
 [[package]]
 name = "sigye-background"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "ratatui",
  "sigye-core",
@@ -2214,7 +2214,7 @@ dependencies = [
 
 [[package]]
 name = "sigye-config"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "directories",
  "serde",
@@ -2224,7 +2224,7 @@ dependencies = [
 
 [[package]]
 name = "sigye-core"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "ratatui",
  "serde",
@@ -2232,7 +2232,7 @@ dependencies = [
 
 [[package]]
 name = "sigye-fonts"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "sigye-core",
 ]
