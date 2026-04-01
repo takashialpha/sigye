@@ -76,16 +76,32 @@ impl Mode for ClockMode {
         let font = ctx.font_registry.get_or_default(&ctx.current_font);
         let font_height = font.height as u16;
 
-        // Layout: Fill(1), font height, Length(2) gap, Length(1) date, Fill(1), Length(1) hints
-        let chunks = Layout::vertical([
-            Constraint::Fill(1),
-            Constraint::Length(font_height),
-            Constraint::Length(2),
-            Constraint::Length(1),
-            Constraint::Fill(1),
-            Constraint::Length(1),
-        ])
-        .split(area);
+        let has_sun_info = ctx.sunrise_sunset.is_some();
+
+        // Layout: Fill(1), font height, Length(2) gap, Length(1) date, [optional Length(1) sun], Fill(1), Length(1) hints
+        let chunks = if has_sun_info {
+            Layout::vertical([
+                Constraint::Fill(1),
+                Constraint::Length(font_height),
+                Constraint::Length(2),
+                Constraint::Length(1),
+                Constraint::Length(1),
+                Constraint::Fill(1),
+                Constraint::Length(1),
+            ])
+            .split(area)
+        } else {
+            Layout::vertical([
+                Constraint::Fill(1),
+                Constraint::Length(font_height),
+                Constraint::Length(2),
+                Constraint::Length(1),
+                Constraint::Length(0),
+                Constraint::Fill(1),
+                Constraint::Length(1),
+            ])
+            .split(area)
+        };
 
         let now = Local::now();
 
@@ -124,6 +140,12 @@ impl Mode for ClockMode {
         let date_str = now.format("%A, %B %-d, %Y").to_string();
         render::render_centered_text(frame, chunks[3], &date_str, Color::DarkGray);
 
+        // Render sunrise/sunset info if available
+        if let Some((ref sunrise, ref sunset)) = ctx.sunrise_sunset {
+            let sun_str = format!("Sunrise {}  Sunset {}", sunrise, sunset);
+            render::render_centered_text(frame, chunks[4], &sun_str, Color::DarkGray);
+        }
+
         // Render key hints
         let hints = self.key_hints();
         let hint_str: String = hints
@@ -131,7 +153,7 @@ impl Mode for ClockMode {
             .map(|(k, v)| format!("[{k}] {v}"))
             .collect::<Vec<_>>()
             .join("  ");
-        render::render_centered_text(frame, chunks[5], &hint_str, Color::DarkGray);
+        render::render_centered_text(frame, chunks[6], &hint_str, Color::DarkGray);
     }
 
     fn handle_key(&mut self, _key: KeyEvent, _ctx: &mut RenderContext) -> bool {

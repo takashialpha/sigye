@@ -2,6 +2,6 @@
 
 pub mod clock;
 pub mod pomodoro;
-pub mod timer;
 pub mod stopwatch;
+pub mod timer;
 pub mod world_clock;

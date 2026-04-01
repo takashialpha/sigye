@@ -25,6 +25,7 @@ pub struct RenderContext {
     pub screensaver_mode: bool,
     pub on_complete_command: Option<String>,
     pub desktop_notifications: bool,
+    pub sunrise_sunset: Option<(String, String)>,
 }
 
 impl RenderContext {
@@ -69,6 +70,18 @@ impl RenderContext {
     /// Run the on-complete shell command in a background thread.
     pub fn run_on_complete(&self) {
         if let Some(ref cmd) = self.on_complete_command {
+            std::thread::spawn({
+                let cmd = cmd.clone();
+                move || {
+                    let _ = std::process::Command::new("sh").arg("-c").arg(&cmd).spawn();
+                }
+            });
+        }
+    }
+
+    /// Run an arbitrary shell command in a background thread (for lifecycle hooks).
+    pub fn run_command(&self, cmd: &Option<String>) {
+        if let Some(cmd) = cmd {
             std::thread::spawn({
                 let cmd = cmd.clone();
                 move || {

@@ -168,7 +168,11 @@ impl Mode for TimerMode {
         } else {
             1.0
         };
-        let bar_color = if self.completed { Color::Red } else { ctx.color() };
+        let bar_color = if self.completed {
+            Color::Red
+        } else {
+            ctx.color()
+        };
         let bar = render::render_progress_bar(progress, area.width.saturating_sub(4), bar_color);
         let bar_widget = Paragraph::new(bar).alignment(Alignment::Center);
         frame.render_widget(bar_widget, chunks[3]);

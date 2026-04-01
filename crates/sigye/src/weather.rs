@@ -120,6 +120,10 @@ pub struct WeatherMonitor {
     location: String,
     /// Flag to signal thread termination.
     running: Arc<RwLock<bool>>,
+    /// Sunrise time string (e.g., "06:45 AM").
+    sunrise: Arc<RwLock<Option<String>>>,
+    /// Sunset time string (e.g., "07:30 PM").
+    sunset: Arc<RwLock<Option<String>>>,
 }
 
 impl WeatherMonitor {
@@ -131,6 +135,8 @@ impl WeatherMonitor {
             cached_background: Arc::new(RwLock::new(BackgroundStyle::Starfield)),
             location,
             running: Arc::new(RwLock::new(false)),
+            sunrise: Arc::new(RwLock::new(None)),
+            sunset: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -148,10 +154,19 @@ impl WeatherMonitor {
         let cached_bg = self.cached_background.clone();
         let location = self.location.clone();
         let running = self.running.clone();
+        let sunrise = self.sunrise.clone();
+        let sunset = self.sunset.clone();
 
         thread::spawn(move || {
             // Fetch immediately on start
-            fetch_and_update(&location, &weather_data, &resolved_bg, &cached_bg);
+            fetch_and_update(
+                &location,
+                &weather_data,
+                &resolved_bg,
+                &cached_bg,
+                &sunrise,
+                &sunset,
+            );
 
             let mut last_fetch = Instant::now();
 
@@ -165,7 +180,14 @@ impl WeatherMonitor {
 
                 // Fetch new data if interval elapsed
                 if last_fetch.elapsed() >= FETCH_INTERVAL {
-                    fetch_and_update(&location, &weather_data, &resolved_bg, &cached_bg);
+                    fetch_and_update(
+                        &location,
+                        &weather_data,
+                        &resolved_bg,
+                        &cached_bg,
+                        &sunrise,
+                        &sunset,
+                    );
                     last_fetch = Instant::now();
                 }
 
@@ -203,6 +225,13 @@ impl WeatherMonitor {
         self.weather_data.read().ok().and_then(|w| w.clone())
     }
 
+    /// Get the sunrise and sunset times (if available).
+    pub fn get_sunrise_sunset(&self) -> Option<(String, String)> {
+        let sunrise = self.sunrise.read().ok()?.clone()?;
+        let sunset = self.sunset.read().ok()?.clone()?;
+        Some((sunrise, sunset))
+    }
+
     /// Get the current time of day for weather-aware rendering.
     #[allow(dead_code)]
     pub fn get_time_of_day(&self) -> TimeOfDay {
@@ -232,9 +261,11 @@ fn fetch_and_update(
     weather_data: &Arc<RwLock<Option<WeatherData>>>,
     resolved_bg: &Arc<RwLock<BackgroundStyle>>,
     cached_bg: &Arc<RwLock<BackgroundStyle>>,
+    sunrise_lock: &Arc<RwLock<Option<String>>>,
+    sunset_lock: &Arc<RwLock<Option<String>>>,
 ) {
-    match fetch_weather(location) {
-        Ok(data) => {
+    match fetch_weather_with_astronomy(location) {
+        Ok((data, sunrise_str, sunset_str)) => {
             let background = map_weather_to_background(&data);
 
             if let Ok(mut wd) = weather_data.write() {
@@ -245,6 +276,16 @@ fn fetch_and_update(
             }
             if let Ok(mut cb) = cached_bg.write() {
                 *cb = background;
+            }
+            if let Some(s) = sunrise_str
+                && let Ok(mut sr) = sunrise_lock.write()
+            {
+                *sr = Some(s);
+            }
+            if let Some(s) = sunset_str
+                && let Ok(mut ss) = sunset_lock.write()
+            {
+                *ss = Some(s);
             }
         }
         Err(_e) => {
@@ -266,8 +307,10 @@ fn fetch_and_update(
     }
 }
 
-/// Fetch weather data from wttr.in API.
-fn fetch_weather(location: &str) -> Result<WeatherData, String> {
+/// Fetch weather data and extract sunrise/sunset strings from the API response.
+fn fetch_weather_with_astronomy(
+    location: &str,
+) -> Result<(WeatherData, Option<String>, Option<String>), String> {
     let url = if location.is_empty() {
         "https://wttr.in/?format=j1".to_string()
     } else {
@@ -287,6 +330,21 @@ fn fetch_weather(location: &str) -> Result<WeatherData, String> {
         .read_json()
         .map_err(|e| format!("JSON parse error: {e}"))?;
 
+    // Extract sunrise/sunset strings from astronomy data
+    let (sunrise_str, sunset_str) = response
+        .weather
+        .as_ref()
+        .and_then(|w| w.first())
+        .and_then(|day| day.astronomy.first())
+        .map(|astro| (Some(astro.sunrise.clone()), Some(astro.sunset.clone())))
+        .unwrap_or((None, None));
+
+    let data = parse_weather_response(response)?;
+    Ok((data, sunrise_str, sunset_str))
+}
+
+/// Parse a WttrResponse into WeatherData.
+fn parse_weather_response(response: WttrResponse) -> Result<WeatherData, String> {
     // Extract current condition
     let current = response
         .current_condition

@@ -29,12 +29,12 @@ pub struct PomodoroMode {
 
 impl PomodoroMode {
     /// Create a new `PomodoroMode` initialized in the Work phase.
-    pub fn new(work_mins: u32) -> Self {
+    pub fn new(work_mins: u32, sessions: u32, focus_mins: u32) -> Self {
         Self {
             phase: PomodoroPhase::Work,
             remaining_secs: work_mins * 60,
-            sessions_completed: 0,
-            total_focus_secs: 0,
+            sessions_completed: sessions,
+            total_focus_secs: focus_mins as u64 * 60,
             work_start: None,
             last_tick: Instant::now(),
             running: false,
@@ -87,6 +87,11 @@ impl PomodoroMode {
         self.running = false;
         self.last_tick = Instant::now();
 
+        // Persist session data
+        ctx.config.pomodoro_sessions_completed = self.sessions_completed;
+        ctx.config.pomodoro_total_focus_mins = (self.total_focus_secs / 60) as u32;
+        let _ = ctx.config.save();
+
         // Trigger effects
         ctx.trigger_flash(1.0);
         ctx.ring_bell();
@@ -98,6 +103,13 @@ impl PomodoroMode {
         };
         ctx.send_notification(title, body);
         ctx.run_on_complete();
+
+        // Lifecycle hooks
+        if self.phase == PomodoroPhase::Work {
+            ctx.run_command(&ctx.config.on_start.clone());
+        } else {
+            ctx.run_command(&ctx.config.on_break.clone());
+        }
 
         if self.phase == PomodoroPhase::Work {
             self.work_start = None;
@@ -221,7 +233,11 @@ impl Mode for PomodoroMode {
     fn handle_key(&mut self, key: KeyEvent, ctx: &mut RenderContext) -> bool {
         match key.code {
             KeyCode::Char(' ') => {
+                let was_running = self.running;
                 self.toggle();
+                if !was_running && self.running && self.phase == PomodoroPhase::Work {
+                    ctx.run_command(&ctx.config.on_start.clone());
+                }
                 true
             }
             KeyCode::Char('r') => {

@@ -70,6 +70,22 @@ struct Cli {
     /// Shell command to execute on timer/pomodoro completion
     #[arg(long)]
     on_complete: Option<String>,
+
+    /// Auto-start the active timer mode (pomodoro, timer, or stopwatch)
+    #[arg(long)]
+    start: bool,
+
+    /// Start in pomodoro mode and auto-start
+    #[arg(long)]
+    pomo: bool,
+
+    /// Start in stopwatch mode and auto-start
+    #[arg(long)]
+    sw: bool,
+
+    /// Set timer duration in minutes and auto-start timer mode
+    #[arg(long = "timer", value_name = "MINS")]
+    timer_mins: Option<u32>,
 }
 
 fn main() -> color_eyre::Result<()> {
@@ -171,12 +187,17 @@ impl App {
             screensaver_mode: false,
             on_complete_command,
             desktop_notifications: false,
+            sunrise_sunset: None,
         };
 
         // Create all mode structs
         let modes: Vec<Box<dyn Mode>> = vec![
             Box::new(ClockMode::new()),
-            Box::new(PomodoroMode::new(ctx.config.pomodoro_work_mins)),
+            Box::new(PomodoroMode::new(
+                ctx.config.pomodoro_work_mins,
+                ctx.config.pomodoro_sessions_completed,
+                ctx.config.pomodoro_total_focus_mins,
+            )),
             Box::new(TimerMode::new(ctx.config.timer_duration_mins)),
             Box::new(StopwatchMode::new()),
             Box::new(WorldClockMode::new(&ctx.config.world_clock_zones)),
@@ -259,6 +280,49 @@ impl App {
             app.update_background_monitors();
         }
 
+        // Quick-start shortcuts
+        if cli.pomo
+            && let Some(idx) = app
+                .modes
+                .iter()
+                .position(|m| m.display_mode() == DisplayMode::Pomodoro)
+        {
+            app.active_mode_index = idx;
+        }
+        if cli.sw
+            && let Some(idx) = app
+                .modes
+                .iter()
+                .position(|m| m.display_mode() == DisplayMode::Stopwatch)
+        {
+            app.active_mode_index = idx;
+        }
+        if let Some(mins) = cli.timer_mins
+            && let Some(idx) = app
+                .modes
+                .iter()
+                .position(|m| m.display_mode() == DisplayMode::Timer)
+        {
+            app.active_mode_index = idx;
+            if let Some(tm) = app.modes[idx].as_any_mut().downcast_mut::<TimerMode>() {
+                tm.sync_duration(mins);
+            }
+        }
+
+        // Auto-start if any quick-start flag is set
+        let auto_start = cli.start || cli.pomo || cli.sw || cli.timer_mins.is_some();
+        if auto_start {
+            let idx = app.active_mode_index;
+            let mode = &mut app.modes[idx];
+            if let Some(pm) = mode.as_any_mut().downcast_mut::<PomodoroMode>() {
+                pm.toggle();
+            } else if let Some(tm) = mode.as_any_mut().downcast_mut::<TimerMode>() {
+                tm.toggle();
+            } else if let Some(sw) = mode.as_any_mut().downcast_mut::<StopwatchMode>() {
+                sw.toggle();
+            }
+        }
+
         app
     }
 
@@ -319,6 +383,12 @@ impl App {
             self.ctx.animation_speed,
             metrics.as_ref(),
         );
+
+        // Update sunrise/sunset from weather monitor
+        self.ctx.sunrise_sunset = self
+            .weather_monitor
+            .as_ref()
+            .and_then(|m| m.get_sunrise_sunset());
 
         // Dispatch to active mode: update then render
         let mode = &mut self.modes[self.active_mode_index];

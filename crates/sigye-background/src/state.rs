@@ -163,6 +163,7 @@ impl BackgroundState {
     }
 
     /// Render a single background character at the given position.
+    #[allow(clippy::too_many_arguments)]
     fn render_char(
         &self,
         x: u16,

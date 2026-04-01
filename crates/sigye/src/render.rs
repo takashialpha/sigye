@@ -6,7 +6,7 @@ use ratatui::{
     style::{Color, Style},
     text::{Line, Span},
 };
-use sigye_core::{apply_animation, is_colon_visible, AnimationSpeed, AnimationStyle, ColorTheme};
+use sigye_core::{AnimationSpeed, AnimationStyle, ColorTheme, apply_animation, is_colon_visible};
 use sigye_fonts::Font;
 
 /// Parameters for rendering ASCII art text to the frame buffer.
@@ -81,7 +81,9 @@ pub fn render_ascii_text(
             }
 
             let base_color = if params.color_theme.is_dynamic() {
-                params.color_theme.color_at_position(char_idx, line_idx, width, height)
+                params
+                    .color_theme
+                    .color_at_position(char_idx, line_idx, width, height)
             } else {
                 params.static_color
             };

@@ -82,6 +82,22 @@ pub struct Config {
     /// Shell command to execute on timer/pomodoro completion.
     #[serde(default)]
     pub on_complete: Option<String>,
+
+    /// Number of completed pomodoro work sessions (persisted across runs).
+    #[serde(default)]
+    pub pomodoro_sessions_completed: u32,
+
+    /// Total focus minutes accumulated across pomodoro sessions (persisted).
+    #[serde(default)]
+    pub pomodoro_total_focus_mins: u32,
+
+    /// Shell command to execute when a pomodoro work phase starts.
+    #[serde(default)]
+    pub on_start: Option<String>,
+
+    /// Shell command to execute when a pomodoro break phase starts.
+    #[serde(default)]
+    pub on_break: Option<String>,
 }
 
 fn default_font() -> String {
@@ -149,6 +165,10 @@ impl Default for Config {
             desktop_notifications: default_desktop_notifications(),
             world_clock_zones: default_world_clock_zones(),
             on_complete: None,
+            pomodoro_sessions_completed: 0,
+            pomodoro_total_focus_mins: 0,
+            on_start: None,
+            on_break: None,
         }
     }
 }

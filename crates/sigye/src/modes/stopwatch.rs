@@ -100,8 +100,8 @@ impl Mode for StopwatchMode {
         let chunks = Layout::vertical([
             Constraint::Fill(1),
             Constraint::Length(font_height),
-            Constraint::Length(1), // centiseconds
-            Constraint::Length(1), // status
+            Constraint::Length(1),                // centiseconds
+            Constraint::Length(1),                // status
             Constraint::Length(lap_count.max(1)), // laps area
             Constraint::Fill(1),
             Constraint::Length(1), // hints

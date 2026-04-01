@@ -116,11 +116,9 @@ impl Mode for WorldClockMode {
             let entry_area = chunks[chunk_idx];
 
             // Split entry area into label row + clock rows
-            let entry_chunks = Layout::vertical([
-                Constraint::Length(1),
-                Constraint::Length(font_height),
-            ])
-            .split(entry_area);
+            let entry_chunks =
+                Layout::vertical([Constraint::Length(1), Constraint::Length(font_height)])
+                    .split(entry_area);
 
             // Render label
             render::render_centered_text(frame, entry_chunks[0], label, Color::DarkGray);
