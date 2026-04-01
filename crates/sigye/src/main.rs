@@ -26,6 +26,7 @@ use sigye_fonts::FontRegistry;
 use context::RenderContext;
 use mode::Mode;
 use modes::clock::ClockMode;
+use modes::playground::PlaygroundMode;
 use modes::pomodoro::PomodoroMode;
 use modes::stopwatch::StopwatchMode;
 use modes::timer::TimerMode;
@@ -86,11 +87,41 @@ struct Cli {
     /// Set timer duration in minutes and auto-start timer mode
     #[arg(long = "timer", value_name = "MINS")]
     timer_mins: Option<u32>,
+
+    /// Print time once and exit (no TUI)
+    #[arg(long)]
+    once: bool,
+
+    /// Output format for --once mode (human, unix, iso, hex)
+    #[arg(long, default_value = "human")]
+    format: String,
 }
 
 fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
     let cli = Cli::parse();
+
+    // Handle --once mode: print and exit without TUI
+    if cli.once {
+        let now = chrono::Local::now();
+        let output = match cli.format.as_str() {
+            "unix" | "timestamp" | "epoch" => now.timestamp().to_string(),
+            "iso" | "iso8601" => now.format("%Y-%m-%dT%H:%M:%S%:z").to_string(),
+            "hex" => {
+                let h = now.format("%H").to_string().parse::<u32>().unwrap_or(0);
+                let m = now.format("%M").to_string().parse::<u32>().unwrap_or(0);
+                let s = now.format("%S").to_string().parse::<u32>().unwrap_or(0);
+                format!("{h:02X}:{m:02X}:{s:02X}")
+            }
+            _ => {
+                // Default human-readable
+                now.format("%Y-%m-%d %H:%M:%S").to_string()
+            }
+        };
+        println!("{output}");
+        return Ok(());
+    }
+
     let terminal = ratatui::init();
     let result = App::new_with_cli(cli).run(terminal);
     ratatui::restore();
@@ -201,6 +232,7 @@ impl App {
             Box::new(TimerMode::new(ctx.config.timer_duration_mins)),
             Box::new(StopwatchMode::new()),
             Box::new(WorldClockMode::new(&ctx.config.world_clock_zones)),
+            Box::new(PlaygroundMode::new()),
         ];
 
         Self {
@@ -779,6 +811,7 @@ fn parse_display_mode(s: &str) -> Option<DisplayMode> {
         "timer" => Some(DisplayMode::Timer),
         "stopwatch" => Some(DisplayMode::Stopwatch),
         "worldclock" | "world-clock" | "world" => Some(DisplayMode::WorldClock),
+        "playground" | "play" => Some(DisplayMode::Playground),
         _ => None,
     }
 }

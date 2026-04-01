@@ -12,6 +12,7 @@ pub enum DisplayMode {
     Timer,
     Stopwatch,
     WorldClock,
+    Playground,
 }
 
 /// All display modes for cycling.
@@ -21,6 +22,7 @@ const ALL_DISPLAY_MODES: &[DisplayMode] = &[
     DisplayMode::Timer,
     DisplayMode::Stopwatch,
     DisplayMode::WorldClock,
+    DisplayMode::Playground,
 ];
 
 impl DisplayMode {
@@ -42,6 +44,43 @@ impl DisplayMode {
             DisplayMode::Timer => "Timer",
             DisplayMode::Stopwatch => "Stopwatch",
             DisplayMode::WorldClock => "World Clock",
+            DisplayMode::Playground => "Playground",
+        }
+    }
+}
+
+/// Display format for the clock mode.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ClockDisplayFormat {
+    #[default]
+    HumanReadable,
+    UnixTimestamp,
+    Iso8601,
+    HexTime,
+}
+
+const ALL_CLOCK_DISPLAY_FORMATS: &[ClockDisplayFormat] = &[
+    ClockDisplayFormat::HumanReadable,
+    ClockDisplayFormat::UnixTimestamp,
+    ClockDisplayFormat::Iso8601,
+    ClockDisplayFormat::HexTime,
+];
+
+impl ClockDisplayFormat {
+    pub fn next(&self) -> Self {
+        let idx = ALL_CLOCK_DISPLAY_FORMATS
+            .iter()
+            .position(|f| f == self)
+            .unwrap_or(0);
+        ALL_CLOCK_DISPLAY_FORMATS[(idx + 1) % ALL_CLOCK_DISPLAY_FORMATS.len()]
+    }
+
+    pub fn display_name(self) -> &'static str {
+        match self {
+            ClockDisplayFormat::HumanReadable => "Clock",
+            ClockDisplayFormat::UnixTimestamp => "Unix Timestamp",
+            ClockDisplayFormat::Iso8601 => "ISO 8601",
+            ClockDisplayFormat::HexTime => "Hex Time",
         }
     }
 }

@@ -27,3 +27,4 @@ serde_json.workspace = true
 clap = { version = "4", features = ["derive"] }
 notify-rust.workspace = true
 chrono-tz.workspace = true
+arboard.workspace = true
