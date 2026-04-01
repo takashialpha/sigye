@@ -1,6 +1,7 @@
 //! Clock display mode.
 
 use std::any::Any;
+use std::time::Instant;
 
 use chrono::{Datelike, Local, Timelike};
 use crossterm::event::{KeyCode, KeyEvent};
@@ -15,12 +16,19 @@ use crate::context::RenderContext;
 use crate::mode::Mode;
 use crate::render::{self, AsciiTextParams};
 
+/// Duration in milliseconds for toast visibility.
+const TOAST_DURATION_MS: u128 = 2000;
+
 /// Clock display mode — shows the current time as big ASCII art.
 pub struct ClockMode {
     pub last_second: u32,
     pub last_minute: u32,
     pub last_hour: u32,
     pub display_format: ClockDisplayFormat,
+    /// Toast message to display temporarily.
+    toast_message: Option<String>,
+    /// When the toast was triggered.
+    toast_start: Option<Instant>,
 }
 
 impl ClockMode {
@@ -32,6 +40,8 @@ impl ClockMode {
             last_minute: now.format("%M").to_string().parse().unwrap_or(0),
             last_hour: now.format("%H").to_string().parse().unwrap_or(0),
             display_format: ClockDisplayFormat::HumanReadable,
+            toast_message: None,
+            toast_start: None,
         }
     }
 
@@ -55,6 +65,22 @@ impl ClockMode {
 
         ctx.decay_flash();
     }
+
+    /// Show a toast message for a brief duration.
+    fn show_toast(&mut self, message: String) {
+        self.toast_message = Some(message);
+        self.toast_start = Some(Instant::now());
+    }
+
+    /// Returns the active toast text if still within display duration.
+    fn active_toast(&self) -> Option<&str> {
+        if let (Some(msg), Some(start)) = (&self.toast_message, self.toast_start)
+            && start.elapsed().as_millis() < TOAST_DURATION_MS
+        {
+            return Some(msg.as_str());
+        }
+        None
+    }
 }
 
 impl Default for ClockMode {
@@ -63,25 +89,127 @@ impl Default for ClockMode {
     }
 }
 
-/// Render a progress bar line with colored filled/unfilled portions directly to the buffer.
-fn render_progress_line(frame: &mut Frame, area: Rect, text: &str, accent: Color) {
-    let text_width = text.len() as u16;
+/// Render a compact, polished progress bar directly to the buffer.
+/// Format: `label ▮▮▮▮▮▮▯▯▯▯▯▯ pct%`
+#[allow(clippy::too_many_arguments)]
+fn render_mini_bar(
+    buf: &mut ratatui::buffer::Buffer,
+    x: u16,
+    y: u16,
+    max_x: u16,
+    label: &str,
+    progress: f64,
+    accent: Color,
+    dim: Color,
+) -> u16 {
+    let pct = (progress * 100.0) as u32;
+    let pct_str = format!("{pct:>3}%");
+    let bar_width: usize = 12;
+    let filled = (progress * bar_width as f64).round() as usize;
+    let empty = bar_width - filled;
+
+    // Write label
+    let mut cx = x;
+    for ch in label.chars() {
+        if cx >= max_x {
+            break;
+        }
+        if let Some(cell) = buf.cell_mut(Position::new(cx, y)) {
+            cell.set_char(ch);
+            cell.set_fg(dim);
+        }
+        cx += 1;
+    }
+
+    // Space
+    cx += 1;
+
+    // Filled portion
+    for _ in 0..filled {
+        if cx >= max_x {
+            break;
+        }
+        if let Some(cell) = buf.cell_mut(Position::new(cx, y)) {
+            cell.set_char('▮');
+            cell.set_fg(accent);
+        }
+        cx += 1;
+    }
+
+    // Empty portion
+    for _ in 0..empty {
+        if cx >= max_x {
+            break;
+        }
+        if let Some(cell) = buf.cell_mut(Position::new(cx, y)) {
+            cell.set_char('▯');
+            cell.set_fg(Color::Rgb(60, 60, 60));
+        }
+        cx += 1;
+    }
+
+    // Space + percentage
+    cx += 1;
+    for ch in pct_str.chars() {
+        if cx >= max_x {
+            break;
+        }
+        if let Some(cell) = buf.cell_mut(Position::new(cx, y)) {
+            cell.set_char(ch);
+            cell.set_fg(dim);
+        }
+        cx += 1;
+    }
+
+    cx
+}
+
+/// Render a toast message centered in the given area with accent color.
+fn render_toast(frame: &mut Frame, area: Rect, text: &str, accent: Color, elapsed_ms: u128) {
+    // Fade out over the last 500ms
+    let opacity = if elapsed_ms > TOAST_DURATION_MS.saturating_sub(500) {
+        let fade_progress = (TOAST_DURATION_MS.saturating_sub(elapsed_ms)) as f32 / 500.0;
+        fade_progress.clamp(0.0, 1.0)
+    } else {
+        1.0
+    };
+
+    let (r, g, b) = match accent {
+        Color::Rgb(r, g, b) => (r, g, b),
+        Color::Cyan => (0, 255, 255),
+        Color::Green => (0, 255, 0),
+        Color::Magenta => (255, 0, 255),
+        Color::Yellow => (255, 255, 0),
+        Color::Red => (255, 0, 0),
+        Color::Blue => (0, 0, 255),
+        Color::White => (255, 255, 255),
+        _ => (128, 128, 128),
+    };
+
+    let faded = Color::Rgb(
+        (r as f32 * opacity) as u8,
+        (g as f32 * opacity) as u8,
+        (b as f32 * opacity) as u8,
+    );
+
+    // Render: ✓ Copied: <value>
+    let display = format!("✓ {text}");
+    let text_width = display.chars().count() as u16;
     let start_x = area.x + (area.width.saturating_sub(text_width)) / 2;
     let y = area.y;
 
     let buf = frame.buffer_mut();
-    for (char_idx, ch) in text.chars().enumerate() {
+    for (i, ch) in display.chars().enumerate() {
+        let x_pos = start_x + i as u16;
+        if x_pos >= area.x + area.width {
+            break;
+        }
         if ch == ' ' {
             continue;
         }
-        let x_pos = start_x + char_idx as u16;
-        if x_pos >= area.x + area.width {
-            continue;
-        }
-        let color = if ch == '━' { accent } else { Color::DarkGray };
         if let Some(cell) = buf.cell_mut(Position::new(x_pos, y)) {
             cell.set_char(ch);
-            cell.set_fg(color);
+            cell.set_fg(faded);
         }
     }
 }
@@ -103,19 +231,19 @@ impl Mode for ClockMode {
 
         let has_sun_info = ctx.sunrise_sunset.is_some();
 
-        // Layout: Fill(1), font height, Length(2) gap, Length(1) date, [optional Length(1) sun],
-        //         Length(1) format_info, Length(1) progress_bar, Fill(1), Length(1) hints
+        // Layout: Fill(1), font height, Length(2) gap, Length(1) date, [sun], [format_info],
+        //         Fill(1), Length(1) toast/progress, Length(1) hints
         let sun_height = if has_sun_info { 1 } else { 0 };
         let chunks = Layout::vertical([
-            Constraint::Fill(1),
-            Constraint::Length(font_height),
-            Constraint::Length(2),
-            Constraint::Length(1),
-            Constraint::Length(sun_height),
-            Constraint::Length(1),
-            Constraint::Length(1),
-            Constraint::Fill(1),
-            Constraint::Length(1),
+            Constraint::Fill(1),             // [0] top padding
+            Constraint::Length(font_height), // [1] big ASCII time
+            Constraint::Length(2),           // [2] gap
+            Constraint::Length(1),           // [3] date
+            Constraint::Length(sun_height),  // [4] sunrise/sunset
+            Constraint::Length(1),           // [5] format info
+            Constraint::Fill(1),             // [6] bottom padding
+            Constraint::Length(1),           // [7] progress bars
+            Constraint::Length(1),           // [8] hints
         ])
         .split(area);
 
@@ -205,36 +333,67 @@ impl Mode for ClockMode {
             }
         }
 
-        // Render day/year progress bar
-        let day_progress = {
-            let h = now.hour();
-            let m = now.minute();
-            let s = now.second();
-            (h * 3600 + m * 60 + s) as f64 / 86400.0
-        };
-        let year_progress = {
-            let day_of_year = now.ordinal() as f64;
-            let year = now.year();
-            let days_in_year = if (year % 4 == 0 && year % 100 != 0) || year % 400 == 0 {
-                366.0
-            } else {
-                365.0
+        // Render toast OR progress bars in the bottom info row
+        let info_area = chunks[7];
+        if let Some(toast_text) = self.active_toast() {
+            let elapsed = self
+                .toast_start
+                .map(|s| s.elapsed().as_millis())
+                .unwrap_or(0);
+            render_toast(frame, info_area, toast_text, ctx.color(), elapsed);
+        } else {
+            // Render day/year progress bars
+            let day_progress = {
+                let h = now.hour();
+                let m = now.minute();
+                let s = now.second();
+                (h * 3600 + m * 60 + s) as f64 / 86400.0
             };
-            day_of_year / days_in_year
-        };
+            let year_progress = {
+                let day_of_year = now.ordinal() as f64;
+                let year = now.year();
+                let days_in_year = if (year % 4 == 0 && year % 100 != 0) || year % 400 == 0 {
+                    366.0
+                } else {
+                    365.0
+                };
+                day_of_year / days_in_year
+            };
 
-        let day_pct = (day_progress * 100.0) as u32;
-        let year_pct = (year_progress * 100.0) as u32;
+            // Center the two bars with a gap between them
+            // Each bar: "Day " (4) + bar(12) + " " (1) + "xxx%" (4) = 21 chars
+            // Gap: "   " (3)
+            // Total: 21 + 3 + 22 = 46 chars
+            let total_width: u16 = 46;
+            let start_x = info_area.x + (info_area.width.saturating_sub(total_width)) / 2;
+            let max_x = info_area.x + info_area.width;
+            let y = info_area.y;
+            let dim = Color::Rgb(100, 100, 100);
 
-        let bar_width = 20usize;
-        let day_filled = (day_progress * bar_width as f64) as usize;
-        let year_filled = (year_progress * bar_width as f64) as usize;
+            let buf = frame.buffer_mut();
+            let after_day = render_mini_bar(
+                buf,
+                start_x,
+                y,
+                max_x,
+                "Day",
+                day_progress,
+                ctx.color(),
+                dim,
+            );
 
-        let day_bar: String = "━".repeat(day_filled) + &"╌".repeat(bar_width - day_filled);
-        let year_bar: String = "━".repeat(year_filled) + &"╌".repeat(bar_width - year_filled);
-
-        let progress_text = format!("Day {day_bar} {day_pct}%  Year {year_bar} {year_pct}%");
-        render_progress_line(frame, chunks[6], &progress_text, ctx.color());
+            // 3-char gap
+            render_mini_bar(
+                buf,
+                after_day + 3,
+                y,
+                max_x,
+                "Year",
+                year_progress,
+                ctx.color(),
+                dim,
+            );
+        }
 
         // Render key hints
         let hints = self.key_hints();
@@ -255,7 +414,8 @@ impl Mode for ClockMode {
             KeyCode::Char('u') => {
                 let ts = Local::now().timestamp().to_string();
                 if let Ok(mut clipboard) = arboard::Clipboard::new() {
-                    let _ = clipboard.set_text(ts);
+                    let _ = clipboard.set_text(ts.clone());
+                    self.show_toast(format!("Copied: {ts}"));
                 }
                 ctx.trigger_flash(0.5);
                 true
@@ -263,7 +423,8 @@ impl Mode for ClockMode {
             KeyCode::Char('i') => {
                 let iso = Local::now().format("%Y-%m-%dT%H:%M:%S%:z").to_string();
                 if let Ok(mut clipboard) = arboard::Clipboard::new() {
-                    let _ = clipboard.set_text(iso);
+                    let _ = clipboard.set_text(iso.clone());
+                    self.show_toast(format!("Copied: {iso}"));
                 }
                 ctx.trigger_flash(0.5);
                 true

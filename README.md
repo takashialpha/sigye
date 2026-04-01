@@ -10,7 +10,12 @@ A feature-rich terminal clock with ASCII art fonts, animated backgrounds, and pr
 
 ## Features
 
-- **5 display modes** — Clock, Pomodoro, Timer, Stopwatch, and World Clock
+- **6 display modes** — Clock, Pomodoro, Timer, Stopwatch, World Clock, and FIGlet Playground
+- **Developer clock formats** — Unix timestamp, ISO 8601, and hex time display (cycle with `f`)
+- **Clipboard hotkeys** — Copy unix timestamp (`u`) or ISO 8601 (`i`) to clipboard instantly
+- **Day & year progress bars** — Ambient progress indicators at a glance
+- **Scriptable output** — `sigye --once --format unix` for shell pipelines
+- **FIGlet Playground** — Type text and see it rendered live in any ASCII art font
 - **40+ bundled FIGlet fonts** — From classic Standard to stylish Star Wars
 - **18 color themes** — 7 static colors and 11 gradient palettes
 - **5 animation styles** — None, Shifting, Pulsing, Wave, and Reactive
@@ -37,6 +42,10 @@ A feature-rich terminal clock with ASCII art fonts, animated backgrounds, and pr
 | Timer | Yes | -- | Yes | Yes | Yes |
 | Stopwatch | Yes | -- | Yes | -- | Yes |
 | World Clock | Yes | -- | -- | -- | -- |
+| FIGlet Playground | Yes | -- | -- | -- | -- |
+| Unix/ISO/Hex Time | Yes | -- | -- | -- | -- |
+| Clipboard Copy | Yes | -- | -- | -- | -- |
+| Scriptable Output | Yes | -- | -- | -- | -- |
 | FIGlet Fonts | 40+ | 1 | 3 | 1 | 7 |
 | Color Themes | 18 | 8 | 256 | Basic | Basic |
 | Animated Backgrounds | 20+ | -- | -- | -- | -- |
@@ -77,24 +86,34 @@ Press `s` to open the settings dialog, or use the keybindings below to adjust on
 sigye [OPTIONS]
 
 Options:
-  --screensaver      Fullscreen ambient mode (no UI chrome)
-  --demo             Auto-cycle themes, backgrounds, and fonts
-  --font <NAME>      Set font (e.g., "Standard", "Banner", "Doom")
-  --theme <NAME>     Set color theme (e.g., "neon", "fire", "aurora")
-  --bg <NAME>        Set background (e.g., "matrix", "aurora", "weather")
-  --mode <MODE>      Set display mode (clock, pomodoro, timer, stopwatch, worldclock)
-  --tz <LABEL=TZ>    Add world clock timezone (repeatable)
-  -h, --help         Print help
-  -V, --version      Print version
+  --screensaver          Fullscreen ambient mode (no UI chrome)
+  --demo                 Auto-cycle themes, backgrounds, and fonts
+  --font <NAME>          Set font (e.g., "Standard", "Banner", "Doom")
+  --theme <NAME>         Set color theme (e.g., "neon", "fire", "aurora")
+  --bg <NAME>            Set background (e.g., "matrix", "aurora", "weather")
+  --mode <MODE>          Set display mode (clock, pomodoro, timer, stopwatch, worldclock, playground)
+  --tz <LABEL=TZ>        Add world clock timezone (repeatable)
+  --once                 Print time once and exit (no TUI)
+  --format <FORMAT>      Output format for --once (human, unix, iso, hex) [default: human]
+  -h, --help             Print help
+  -V, --version          Print version
 ```
 
 ### Examples
 
 ```bash
+# Scripting & developer use
+sigye --once                                    # Print current time and exit
+sigye --once --format unix                      # Print unix timestamp (e.g., 1743494400)
+sigye --once --format iso                       # Print ISO 8601 (e.g., 2026-04-01T14:30:00+09:00)
+sigye --once --format hex                       # Print hex time (e.g., 0E:1E:2D)
+
+# TUI modes
 sigye --screensaver --bg aurora --theme neon
 sigye --demo
 sigye --mode worldclock --tz "Seoul=Asia/Seoul" --tz "Berlin=Europe/Berlin"
 sigye --mode pomodoro --font Doom --theme fire
+sigye --mode playground --font "Star Wars"
 ```
 
 ## Keybindings
@@ -104,13 +123,21 @@ sigye --mode pomodoro --font Doom --theme fire
 | Key | Action |
 |-----|--------|
 | `q` / `Esc` | Quit |
-| `m` | Cycle display mode (Clock / Pomodoro / Timer / Stopwatch / World Clock) |
+| `m` | Cycle display mode (Clock / Pomodoro / Timer / Stopwatch / World Clock / Playground) |
 | `t` | Toggle 12/24 hour format |
 | `c` | Cycle color theme |
 | `a` | Cycle animation style |
 | `b` | Cycle background style |
 | `s` | Open settings dialog |
 | `?` | Show help overlay |
+
+### Clock Mode
+
+| Key | Action |
+|-----|--------|
+| `f` | Cycle display format (Clock → Unix Timestamp → ISO 8601 → Hex Time) |
+| `u` | Copy unix timestamp to clipboard |
+| `i` | Copy ISO 8601 timestamp to clipboard |
 
 ### Pomodoro Mode
 
@@ -136,6 +163,14 @@ sigye --mode pomodoro --font Doom --theme fire
 | `Space` | Pause / resume |
 | `r` | Reset stopwatch |
 | `l` | Record lap |
+
+### Playground Mode
+
+| Key | Action |
+|-----|--------|
+| Type | Enter text to render in ASCII art |
+| `Backspace` | Delete last character |
+| `Delete` | Clear all text |
 
 ### Settings Dialog
 
