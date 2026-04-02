@@ -26,7 +26,6 @@ use sigye_fonts::FontRegistry;
 use context::RenderContext;
 use mode::Mode;
 use modes::clock::ClockMode;
-use modes::playground::PlaygroundMode;
 use modes::pomodoro::PomodoroMode;
 use modes::stopwatch::StopwatchMode;
 use modes::timer::TimerMode;
@@ -232,7 +231,6 @@ impl App {
             Box::new(TimerMode::new(ctx.config.timer_duration_mins)),
             Box::new(StopwatchMode::new()),
             Box::new(WorldClockMode::new(&ctx.config.world_clock_zones)),
-            Box::new(PlaygroundMode::new()),
         ];
 
         Self {
@@ -811,7 +809,6 @@ fn parse_display_mode(s: &str) -> Option<DisplayMode> {
         "timer" => Some(DisplayMode::Timer),
         "stopwatch" => Some(DisplayMode::Stopwatch),
         "worldclock" | "world-clock" | "world" => Some(DisplayMode::WorldClock),
-        "playground" | "play" => Some(DisplayMode::Playground),
         _ => None,
     }
 }
