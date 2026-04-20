@@ -111,7 +111,9 @@ pub fn render_ascii_text(
 /// Render a single line of text centered in the given area, directly to buffer.
 /// Skips spaces to preserve background transparency.
 pub fn render_centered_text(frame: &mut Frame, area: Rect, text: &str, color: Color) {
-    let text_width = text.len() as u16;
+    // Use char count (not byte len) so multi-byte characters like `─` (U+2500)
+    // center correctly. Each rendered char is assumed to occupy one terminal cell.
+    let text_width = text.chars().count() as u16;
     let start_x = area.x + (area.width.saturating_sub(text_width)) / 2;
     let y = area.y;
 

@@ -1,7 +1,9 @@
 //! sigye - A terminal clock application with configurable fonts.
 
 mod context;
+mod countdown_dialog;
 mod mode;
+mod mode_dialog;
 mod modes;
 mod render;
 mod settings;
@@ -24,8 +26,11 @@ use sigye_core::{BackgroundStyle, ColorTheme, DisplayMode};
 use sigye_fonts::FontRegistry;
 
 use context::RenderContext;
+use countdown_dialog::{CountdownAction, CountdownDialog};
 use mode::Mode;
+use mode_dialog::{ModeAction, ModeDialog};
 use modes::clock::ClockMode;
+use modes::countdown::CountdownMode;
 use modes::pomodoro::PomodoroMode;
 use modes::stopwatch::StopwatchMode;
 use modes::timer::TimerMode;
@@ -59,7 +64,7 @@ struct Cli {
     #[arg(long = "bg", alias = "background")]
     background: Option<String>,
 
-    /// Set the display mode (clock, pomodoro, timer, stopwatch, worldclock)
+    /// Set the display mode (clock, pomodoro, timer, stopwatch, worldclock, countdown)
     #[arg(long)]
     mode: Option<String>,
 
@@ -139,6 +144,10 @@ pub struct App {
     active_mode_index: usize,
     /// Settings dialog state.
     settings_dialog: SettingsDialog,
+    /// Mode picker dialog state.
+    mode_dialog: ModeDialog,
+    /// Countdown event management dialog state.
+    countdown_dialog: CountdownDialog,
     /// Background animation state.
     background_state: BackgroundState,
     /// System monitor for reactive backgrounds (lazy initialized).
@@ -231,6 +240,7 @@ impl App {
             Box::new(TimerMode::new(ctx.config.timer_duration_mins)),
             Box::new(StopwatchMode::new()),
             Box::new(WorldClockMode::new(&ctx.config.world_clock_zones)),
+            Box::new(CountdownMode::new()),
         ];
 
         Self {
@@ -239,6 +249,8 @@ impl App {
             modes,
             active_mode_index: 0,
             settings_dialog,
+            mode_dialog: ModeDialog::new(),
+            countdown_dialog: CountdownDialog::new(),
             background_state: BackgroundState::new(),
             system_monitor,
             weather_monitor,
@@ -425,10 +437,17 @@ impl App {
         mode.update(&mut self.ctx);
         mode.render(frame, &self.ctx);
 
-        // Render settings dialog if visible
+        // Render dialogs (last visible wins) — settings, then mode picker, then countdown editor.
         let color = self.ctx.color();
         let area = frame.area();
         self.settings_dialog.render(frame, area, color);
+        self.mode_dialog.render(
+            frame,
+            area,
+            color,
+            self.modes[self.active_mode_index].display_mode(),
+        );
+        self.countdown_dialog.render(frame, area, color);
 
         // Render help overlay
         self.render_help_overlay(frame);
@@ -451,9 +470,17 @@ impl App {
 
     /// Handles the key events and updates the state of [`App`].
     fn on_key_event(&mut self, key: KeyEvent) {
-        // If settings dialog is visible, handle dialog keys
+        // Dialogs are modal: route to whichever is visible.
         if self.settings_dialog.visible {
             self.handle_settings_key(key);
+            return;
+        }
+        if self.countdown_dialog.visible {
+            self.handle_countdown_dialog_key(key);
+            return;
+        }
+        if self.mode_dialog.visible {
+            self.handle_mode_dialog_key(key);
             return;
         }
 
@@ -473,11 +500,20 @@ impl App {
             return;
         }
 
+        // Mode-conditional global keys.
+        if let KeyCode::Char('e') = key.code
+            && self.modes[self.active_mode_index].display_mode() == DisplayMode::Countdown
+        {
+            self.open_countdown_dialog();
+            return;
+        }
+
         // Global keybindings
         match (key.modifiers, key.code) {
             (_, KeyCode::Esc | KeyCode::Char('q'))
             | (KeyModifiers::CONTROL, KeyCode::Char('c') | KeyCode::Char('C')) => self.quit(),
             (_, KeyCode::Char('m')) => self.toggle_display_mode(),
+            (_, KeyCode::Char('M')) => self.open_mode_dialog(),
             (_, KeyCode::Char('t')) => {
                 self.ctx.time_format = self.ctx.time_format.toggle();
             }
@@ -493,6 +529,45 @@ impl App {
             }
             (_, KeyCode::Char('s')) => self.open_settings(),
             _ => {}
+        }
+    }
+
+    /// Open the mode picker dialog with the cursor on the active mode.
+    fn open_mode_dialog(&mut self) {
+        let current = self.modes[self.active_mode_index].display_mode();
+        self.mode_dialog.open(current);
+    }
+
+    /// Route key events to the mode picker and act on the result.
+    fn handle_mode_dialog_key(&mut self, key: KeyEvent) {
+        match self.mode_dialog.handle_key(key) {
+            ModeAction::Continue => {}
+            ModeAction::Cancel => {}
+            ModeAction::Select(mode) => {
+                if let Some(idx) = self.modes.iter().position(|m| m.display_mode() == mode) {
+                    self.active_mode_index = idx;
+                }
+            }
+        }
+    }
+
+    /// Open the countdown event management dialog with a snapshot of current events.
+    fn open_countdown_dialog(&mut self) {
+        let events = self.ctx.config.countdown_events.clone();
+        self.countdown_dialog.open(events);
+    }
+
+    /// Route key events to the countdown editor and persist on commit.
+    fn handle_countdown_dialog_key(&mut self, key: KeyEvent) {
+        match self.countdown_dialog.handle_key(key) {
+            CountdownAction::Continue => {}
+            CountdownAction::Cancel => {}
+            CountdownAction::Commit(events) => {
+                self.ctx.config.countdown_events = events;
+                if let Err(e) = self.ctx.config.save() {
+                    eprintln!("Warning: Failed to save config: {e}");
+                }
+            }
         }
     }
 
@@ -663,7 +738,7 @@ impl App {
 
         let area = frame.area();
         let width = 56u16.min(area.width.saturating_sub(4));
-        let height = 28u16.min(area.height.saturating_sub(2));
+        let height = 35u16.min(area.height.saturating_sub(2));
         let x = (area.width.saturating_sub(width)) / 2;
         let y = (area.height.saturating_sub(height)) / 2;
         let overlay_area = ratatui::layout::Rect::new(x, y, width, height);
@@ -691,6 +766,7 @@ impl App {
             Line::from(Span::styled("  Global", Style::default().fg(accent).bold())),
             key_line("    q / Esc     ", "Quit"),
             key_line("    m           ", "Cycle mode"),
+            key_line("    M           ", "Pick mode (dialog)"),
             key_line("    t           ", "Toggle 12/24 hour"),
             key_line("    c           ", "Cycle color theme"),
             key_line("    a           ", "Cycle animation style"),
@@ -718,6 +794,14 @@ impl App {
             key_line("    Space       ", "Start / Pause"),
             key_line("    r           ", "Reset"),
             key_line("    l           ", "Lap"),
+            Line::from(""),
+            Line::from(Span::styled(
+                "  Countdown",
+                Style::default().fg(accent).bold(),
+            )),
+            key_line("    n / →       ", "Next event"),
+            key_line("    p / ←       ", "Previous event"),
+            key_line("    e           ", "Manage events (dialog)"),
             Line::from(""),
             Line::from(Span::styled(
                 "Press any key to close",
@@ -809,6 +893,7 @@ fn parse_display_mode(s: &str) -> Option<DisplayMode> {
         "timer" => Some(DisplayMode::Timer),
         "stopwatch" => Some(DisplayMode::Stopwatch),
         "worldclock" | "world-clock" | "world" => Some(DisplayMode::WorldClock),
+        "countdown" | "life" => Some(DisplayMode::Countdown),
         _ => None,
     }
 }

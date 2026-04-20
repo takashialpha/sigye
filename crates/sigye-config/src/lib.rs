@@ -98,6 +98,30 @@ pub struct Config {
     /// Shell command to execute when a pomodoro break phase starts.
     #[serde(default)]
     pub on_break: Option<String>,
+
+    /// Life countdown events (e.g., birthdays, launches, anniversaries).
+    #[serde(default)]
+    pub countdown_events: Vec<CountdownEvent>,
+}
+
+/// A single life countdown event.
+///
+/// `target` is parsed by the countdown mode as either:
+/// - An ISO 8601 date (`YYYY-MM-DD`), interpreted as midnight local time, or
+/// - An ISO 8601 datetime (`YYYY-MM-DDTHH:MM:SS`) in local time, or
+/// - An ISO 8601 datetime with offset (`YYYY-MM-DDTHH:MM:SS+09:00`).
+///
+/// When `since = false` (default) the event counts **down** to the target.
+/// When `since = true` the event counts **up** from the target (e.g., anniversaries, sobriety).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CountdownEvent {
+    /// Display label (e.g., "Launch", "Birthday", "Sober").
+    pub name: String,
+    /// Target date/time as an ISO 8601 string.
+    pub target: String,
+    /// If true, count up from `target` instead of down to it.
+    #[serde(default)]
+    pub since: bool,
 }
 
 fn default_font() -> String {
@@ -169,6 +193,7 @@ impl Default for Config {
             pomodoro_total_focus_mins: 0,
             on_start: None,
             on_break: None,
+            countdown_events: Vec::new(),
         }
     }
 }

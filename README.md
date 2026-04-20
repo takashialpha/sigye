@@ -10,15 +10,15 @@ A feature-rich terminal clock with ASCII art fonts, animated backgrounds, and pr
 
 ## Features
 
-- **5 display modes** — Clock, Pomodoro, Timer, Stopwatch, and World Clock
+- **6 display modes** — Clock, Pomodoro, Timer, Stopwatch, World Clock, and Countdown
 - **Developer clock formats** — Unix timestamp, ISO 8601, and hex time display (cycle with `f`)
 - **Clipboard hotkeys** — Copy unix timestamp (`u`) or ISO 8601 (`i`) to clipboard instantly
 - **Day & year progress bars** — Ambient progress indicators at a glance
 - **Scriptable output** — `sigye --once --format unix` for shell pipelines
 - **40+ bundled FIGlet fonts** — From classic Standard to stylish Star Wars
-- **18 color themes** — 7 static colors and 11 gradient palettes
+- **21 color themes** — 7 static colors and 14 gradient palettes (including seasonal presets)
 - **5 animation styles** — None, Shifting, Pulsing, Wave, and Reactive
-- **20+ animated backgrounds** — Starfield, matrix rain, weather effects, cherry blossoms, and system-reactive visuals
+- **24 animated backgrounds** — Starfield, matrix rain, weather effects, cherry blossoms, seasonal presets (Halloween / Yuletide / Seollal), and system-reactive visuals
 - **Desktop notifications** — Alerts for Pomodoro phase changes and timer completion
 - **Live weather backgrounds** — Auto-selects rain, snow, fog, or sun based on real conditions via wttr.in
 - **System-reactive backgrounds** — CPU, memory, network, and disk metrics drive visual effects
@@ -45,8 +45,8 @@ A feature-rich terminal clock with ASCII art fonts, animated backgrounds, and pr
 | Clipboard Copy | Yes | -- | -- | -- | -- |
 | Scriptable Output | Yes | -- | -- | -- | -- |
 | FIGlet Fonts | 40+ | 1 | 3 | 1 | 7 |
-| Color Themes | 18 | 8 | 256 | Basic | Basic |
-| Animated Backgrounds | 20+ | -- | -- | -- | -- |
+| Color Themes | 21 | 8 | 256 | Basic | Basic |
+| Animated Backgrounds | 24 | -- | -- | -- | -- |
 | Live Weather | Yes | -- | -- | -- | -- |
 | System-Reactive | Yes | -- | -- | -- | -- |
 | Desktop Notifications | Yes | -- | -- | -- | Yes* |
@@ -89,7 +89,7 @@ Options:
   --font <NAME>          Set font (e.g., "Standard", "Banner", "Doom")
   --theme <NAME>         Set color theme (e.g., "neon", "fire", "aurora")
   --bg <NAME>            Set background (e.g., "matrix", "aurora", "weather")
-  --mode <MODE>          Set display mode (clock, pomodoro, timer, stopwatch, worldclock)
+  --mode <MODE>          Set display mode (clock, pomodoro, timer, stopwatch, worldclock, countdown)
   --tz <LABEL=TZ>        Add world clock timezone (repeatable)
   --once                 Print time once and exit (no TUI)
   --format <FORMAT>      Output format for --once (human, unix, iso, hex) [default: human]
@@ -120,7 +120,8 @@ sigye --mode pomodoro --font Doom --theme fire
 | Key | Action |
 |-----|--------|
 | `q` / `Esc` | Quit |
-| `m` | Cycle display mode (Clock / Pomodoro / Timer / Stopwatch / World Clock) |
+| `m` | Cycle display mode (Clock / Pomodoro / Timer / Stopwatch / World Clock / Countdown) |
+| `M` | Open mode picker dialog (1-6 to jump, ↑↓ to navigate, Enter to pick) |
 | `t` | Toggle 12/24 hour format |
 | `c` | Cycle color theme |
 | `a` | Cycle animation style |
@@ -160,6 +161,14 @@ sigye --mode pomodoro --font Doom --theme fire
 | `Space` | Pause / resume |
 | `r` | Reset stopwatch |
 | `l` | Record lap |
+
+### Countdown Mode
+
+| Key | Action |
+|-----|--------|
+| `n` / `→` | Next event |
+| `p` / `←` | Previous event |
+| `e` | Open event management dialog (add / edit / delete) |
 
 ### Settings Dialog
 
@@ -206,6 +215,33 @@ world_clock_zones = [
 ]
 ```
 
+### Countdown Events
+
+Add life events to display in Countdown mode. `target` accepts an ISO 8601
+date (`YYYY-MM-DD`, interpreted as local midnight), a naive local datetime
+(`YYYY-MM-DDTHH:MM:SS`), or a full RFC 3339 datetime with offset. Set
+`since = true` to count **up** from the target instead of down to it:
+
+```toml
+[[countdown_events]]
+name = "Launch"
+target = "2026-06-01T09:00:00+09:00"
+
+[[countdown_events]]
+name = "Birthday"
+target = "2026-09-15"
+
+[[countdown_events]]
+name = "Sober"
+target = "2023-02-14"
+since = true
+```
+
+In Countdown mode, press `n` / `p` (or arrow keys) to cycle between events.
+Events far from now show a day count; events under 24 hours away switch to
+`HH:MM:SS` for tangible urgency. A date-only event on today's date surfaces
+as `TODAY`.
+
 ### Custom Fonts
 
 Place FIGlet font files (`.flf`) in `~/.config/sigye/fonts/` and they will appear in the settings dialog.
@@ -231,6 +267,9 @@ Cyan, Green, White, Magenta, Yellow, Red, Blue
 | Aurora | Green to Cyan to Blue to Purple |
 | Winter | Deep Blue to Royal Blue to Ice Blue |
 | Sakura | Sakura Pink to Lavender Blush |
+| Pumpkin | Deep Violet to Magenta Purple to Pumpkin Orange (vertical) |
+| Yule | Evergreen body with Crimson accents on the outer columns |
+| Crimson Gold | Crimson to Gold (vertical) |
 
 ## Background Styles
 
@@ -264,6 +303,21 @@ Cyan, Green, White, Magenta, Yellow, Red, Blue
 | Dawn | Sunrise gradient with fading stars |
 | Dusk | Sunset gradient with emerging stars |
 | Sakura | Cherry blossom petals drifting down |
+| Halloween | Drifting bats with vertical bob and ambient glowing pumpkins |
+| Yuletide | Colored string-light garland (red / green / gold / ivory) draped across the viewport with phase-shifted breathing bulbs, plus sparse snow |
+| Seollal | Korean bangpaeyeon (방패연) shield kites drifting with streaming tails, plum blossoms (매화) drifting downward, colored from the obangsaek (오방색) five-color palette |
+
+### Seasonal Presets
+
+Three curated pairings designed to be selected together for a thematically coherent "moment". All palettes are tuned for legibility on both light and dark terminal backgrounds:
+
+| Preset | ColorTheme | BackgroundStyle | Polish beat |
+|--------|------------|-----------------|-------------|
+| **Halloween** | Pumpkin (deep violet → magenta → deep pumpkin, vertical) | Halloween | Pumpkins breathe a warm glow; bats drift and bob across the viewport |
+| **Yuletide** | Yule (evergreen body with deep-crimson outer edges) | Yuletide | Colored string-light garland breathes asynchronously; distinct from plain Snowfall |
+| **Seollal** (설날) | Crimson Gold (deep crimson → dark goldenrod, vertical) | Seollal | Kite bodies warm subtly on the colon's off-beat; authentic Korean iconography (방패연 shield kites + 매화 plum blossoms + 오방색 five cardinal colors) |
+
+> The Korean Lunar New Year preset is intentionally named **Seollal** (설날), not "Lunar New Year", to match Sigye's Korean origin. The visual vocabulary uses authentic Seollal traditions — kite flying (연날리기) and plum blossoms (매화) — rather than rising lanterns or firecrackers, which belong to other holidays (Daeboreum / Lotus Lantern Festival / Chinese New Year).
 
 ### System-Reactive
 

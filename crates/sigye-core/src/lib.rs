@@ -12,6 +12,7 @@ pub enum DisplayMode {
     Timer,
     Stopwatch,
     WorldClock,
+    Countdown,
 }
 
 /// All display modes for cycling.
@@ -21,6 +22,7 @@ const ALL_DISPLAY_MODES: &[DisplayMode] = &[
     DisplayMode::Timer,
     DisplayMode::Stopwatch,
     DisplayMode::WorldClock,
+    DisplayMode::Countdown,
 ];
 
 impl DisplayMode {
@@ -42,6 +44,7 @@ impl DisplayMode {
             DisplayMode::Timer => "Timer",
             DisplayMode::Stopwatch => "Stopwatch",
             DisplayMode::WorldClock => "World Clock",
+            DisplayMode::Countdown => "Countdown",
         }
     }
 }
