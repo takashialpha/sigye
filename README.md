@@ -16,9 +16,9 @@ A feature-rich terminal clock with ASCII art fonts, animated backgrounds, and pr
 - **Day & year progress bars** — Ambient progress indicators at a glance
 - **Scriptable output** — `sigye --once --format unix` for shell pipelines
 - **40+ bundled FIGlet fonts** — From classic Standard to stylish Star Wars
-- **21 color themes** — 7 static colors and 14 gradient palettes (including seasonal presets)
+- **18 color themes** — 7 static colors and 11 gradient palettes
 - **5 animation styles** — None, Shifting, Pulsing, Wave, and Reactive
-- **24 animated backgrounds** — Starfield, matrix rain, weather effects, cherry blossoms, seasonal presets (Halloween / Yuletide / Seollal), and system-reactive visuals
+- **21 animated backgrounds** — Starfield, matrix rain, weather effects, cherry blossoms, twilight, and system-reactive visuals
 - **Desktop notifications** — Alerts for Pomodoro phase changes and timer completion
 - **Live weather backgrounds** — Auto-selects rain, snow, fog, or sun based on real conditions via wttr.in
 - **System-reactive backgrounds** — CPU, memory, network, and disk metrics drive visual effects
@@ -41,12 +41,13 @@ A feature-rich terminal clock with ASCII art fonts, animated backgrounds, and pr
 | Timer | Yes | -- | Yes | Yes | Yes |
 | Stopwatch | Yes | -- | Yes | -- | Yes |
 | World Clock | Yes | -- | -- | -- | -- |
+| Life Countdown | Yes | -- | -- | -- | -- |
 | Unix/ISO/Hex Time | Yes | -- | -- | -- | -- |
 | Clipboard Copy | Yes | -- | -- | -- | -- |
 | Scriptable Output | Yes | -- | -- | -- | -- |
 | FIGlet Fonts | 40+ | 1 | 3 | 1 | 7 |
-| Color Themes | 21 | 8 | 256 | Basic | Basic |
-| Animated Backgrounds | 24 | -- | -- | -- | -- |
+| Color Themes | 18 | 8 | 256 | Basic | Basic |
+| Animated Backgrounds | 21 | -- | -- | -- | -- |
 | Live Weather | Yes | -- | -- | -- | -- |
 | System-Reactive | Yes | -- | -- | -- | -- |
 | Desktop Notifications | Yes | -- | -- | -- | Yes* |
@@ -267,9 +268,6 @@ Cyan, Green, White, Magenta, Yellow, Red, Blue
 | Aurora | Green to Cyan to Blue to Purple |
 | Winter | Deep Blue to Royal Blue to Ice Blue |
 | Sakura | Sakura Pink to Lavender Blush |
-| Pumpkin | Deep Violet to Magenta Purple to Pumpkin Orange (vertical) |
-| Yule | Evergreen body with Crimson accents on the outer columns |
-| Crimson Gold | Crimson to Gold (vertical) |
 
 ## Background Styles
 
@@ -296,28 +294,13 @@ Cyan, Green, White, Magenta, Yellow, Red, Blue
 | Frost | Ice crystals growing from screen edges |
 | Aurora | Northern lights in green, cyan, blue, and purple |
 
-### Twilight & Seasonal
+### Twilight & Spring
 
 | Style | Description |
 |-------|-------------|
 | Dawn | Sunrise gradient with fading stars |
 | Dusk | Sunset gradient with emerging stars |
 | Sakura | Cherry blossom petals drifting down |
-| Halloween | Drifting bats with vertical bob and ambient glowing pumpkins |
-| Yuletide | Colored string-light garland (red / green / gold / ivory) draped across the viewport with phase-shifted breathing bulbs, plus sparse snow |
-| Seollal | Korean bangpaeyeon (방패연) shield kites drifting with streaming tails, plum blossoms (매화) drifting downward, colored from the obangsaek (오방색) five-color palette |
-
-### Seasonal Presets
-
-Three curated pairings designed to be selected together for a thematically coherent "moment". All palettes are tuned for legibility on both light and dark terminal backgrounds:
-
-| Preset | ColorTheme | BackgroundStyle | Polish beat |
-|--------|------------|-----------------|-------------|
-| **Halloween** | Pumpkin (deep violet → magenta → deep pumpkin, vertical) | Halloween | Pumpkins breathe a warm glow; bats drift and bob across the viewport |
-| **Yuletide** | Yule (evergreen body with deep-crimson outer edges) | Yuletide | Colored string-light garland breathes asynchronously; distinct from plain Snowfall |
-| **Seollal** (설날) | Crimson Gold (deep crimson → dark goldenrod, vertical) | Seollal | Kite bodies warm subtly on the colon's off-beat; authentic Korean iconography (방패연 shield kites + 매화 plum blossoms + 오방색 five cardinal colors) |
-
-> The Korean Lunar New Year preset is intentionally named **Seollal** (설날), not "Lunar New Year", to match Sigye's Korean origin. The visual vocabulary uses authentic Seollal traditions — kite flying (연날리기) and plum blossoms (매화) — rather than rising lanterns or firecrackers, which belong to other holidays (Daeboreum / Lotus Lantern Festival / Chinese New Year).
 
 ### System-Reactive
 
