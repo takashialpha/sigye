@@ -9,7 +9,6 @@ use crossterm::event::KeyEvent;
 use ratatui::{
     Frame,
     layout::{Constraint, Layout},
-    style::Color,
 };
 use sigye_core::{DisplayMode, TimeFormat};
 
@@ -76,7 +75,7 @@ impl Mode for WorldClockMode {
                 frame,
                 area,
                 "No world clock zones configured",
-                Color::DarkGray,
+                ctx.dim_color(),
             );
             return;
         }
@@ -121,7 +120,7 @@ impl Mode for WorldClockMode {
                     .split(entry_area);
 
             // Render label
-            render::render_centered_text(frame, entry_chunks[0], label, Color::DarkGray);
+            render::render_centered_text(frame, entry_chunks[0], label, ctx.dim_color());
 
             // Render time in FIGlet font
             let time_str = if let Ok(tz) = Tz::from_str(tz_str) {
@@ -145,7 +144,7 @@ impl Mode for WorldClockMode {
             .map(|(k, v)| format!("[{k}] {v}"))
             .collect::<Vec<_>>()
             .join("  ");
-        render::render_centered_text(frame, hints_area, &hint_str, Color::DarkGray);
+        render::render_centered_text(frame, hints_area, &hint_str, ctx.dim_color());
     }
 
     fn handle_key(&mut self, _key: KeyEvent, _ctx: &mut RenderContext) -> bool {

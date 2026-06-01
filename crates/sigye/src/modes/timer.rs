@@ -155,7 +155,7 @@ impl Mode for TimerMode {
         let (status_text, status_color) = if self.completed {
             ("TIME'S UP!", Color::Red)
         } else if !self.running {
-            ("(PAUSED)", Color::DarkGray)
+            ("(PAUSED)", ctx.dim_color())
         } else {
             ("RUNNING", ctx.color())
         };
@@ -184,7 +184,7 @@ impl Mode for TimerMode {
             .map(|(k, v)| format!("[{k}] {v}"))
             .collect::<Vec<_>>()
             .join("  ");
-        render::render_centered_text(frame, chunks[5], &hint_str, Color::DarkGray);
+        render::render_centered_text(frame, chunks[5], &hint_str, ctx.dim_color());
     }
 
     fn handle_key(&mut self, key: KeyEvent, ctx: &mut RenderContext) -> bool {

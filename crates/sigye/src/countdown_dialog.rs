@@ -255,11 +255,12 @@ impl CountdownDialog {
                     form.name.pop();
                     self.error = None;
                 }
-                KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    if form.name.chars().count() < NAME_MAX {
-                        form.name.push(c);
-                        self.error = None;
-                    }
+                KeyCode::Char(c)
+                    if !key.modifiers.contains(KeyModifiers::CONTROL)
+                        && form.name.chars().count() < NAME_MAX =>
+                {
+                    form.name.push(c);
+                    self.error = None;
                 }
                 _ => {}
             },
@@ -268,11 +269,12 @@ impl CountdownDialog {
                     form.target.pop();
                     self.error = None;
                 }
-                KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    if form.target.chars().count() < TARGET_MAX {
-                        form.target.push(c);
-                        self.error = None;
-                    }
+                KeyCode::Char(c)
+                    if !key.modifiers.contains(KeyModifiers::CONTROL)
+                        && form.target.chars().count() < TARGET_MAX =>
+                {
+                    form.target.push(c);
+                    self.error = None;
                 }
                 _ => {}
             },

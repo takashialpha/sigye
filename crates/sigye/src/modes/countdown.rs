@@ -7,7 +7,7 @@ use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Layout},
-    style::{Color, Style},
+    style::Style,
     text::{Line, Span},
     widgets::Paragraph,
 };
@@ -220,8 +220,8 @@ impl CountdownMode {
     fn render_onboarding(&self, frame: &mut Frame, ctx: &RenderContext) {
         let area = frame.area();
         let accent = ctx.color();
-        let dim = Color::DarkGray;
-        let muted = Color::Gray;
+        let dim = ctx.dim_color();
+        let muted = ctx.muted_color();
 
         let chunks = Layout::vertical([
             Constraint::Fill(1),   // [0] top spacer
@@ -272,7 +272,7 @@ impl CountdownMode {
             .iter()
             .map(|(name, target, kind)| {
                 Line::from(vec![
-                    Span::styled(format!("  {name:<18}"), Style::default().fg(Color::White)),
+                    Span::styled(format!("  {name:<18}"), Style::default().fg(muted)),
                     Span::styled(format!("{target:<14}"), Style::default().fg(muted)),
                     Span::styled(format!("({kind})"), Style::default().fg(dim)),
                 ])
@@ -356,11 +356,11 @@ impl Mode for CountdownMode {
 
         render::render_ascii_text(frame, chunks[1], font, &view.big_text, &params);
         render::render_centered_text(frame, chunks[3], &view.status, ctx.color());
-        render::render_centered_text(frame, chunks[4], &view.target_label, Color::DarkGray);
+        render::render_centered_text(frame, chunks[4], &view.target_label, ctx.dim_color());
 
         if events.len() > 1 {
             let pager = format!("event {} of {}", self.active_index + 1, events.len());
-            render::render_centered_text(frame, chunks[6], &pager, Color::DarkGray);
+            render::render_centered_text(frame, chunks[6], &pager, ctx.dim_color());
         }
 
         let hints = self.key_hints();
@@ -369,7 +369,7 @@ impl Mode for CountdownMode {
             .map(|(k, v)| format!("[{k}] {v}"))
             .collect::<Vec<_>>()
             .join("  ");
-        render::render_centered_text(frame, chunks[7], &hint_str, Color::DarkGray);
+        render::render_centered_text(frame, chunks[7], &hint_str, ctx.dim_color());
     }
 
     fn handle_key(&mut self, key: KeyEvent, ctx: &mut RenderContext) -> bool {

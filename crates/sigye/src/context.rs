@@ -34,6 +34,16 @@ impl RenderContext {
         self.color_theme.color()
     }
 
+    /// Get the dimmed theme color for secondary text.
+    pub fn dim_color(&self) -> Color {
+        self.color_theme.secondary_color()
+    }
+
+    /// Get the muted theme color for slightly brighter secondary text.
+    pub fn muted_color(&self) -> Color {
+        self.color_theme.muted_color()
+    }
+
     /// Get animation elapsed time in milliseconds.
     pub fn elapsed_ms(&self) -> u64 {
         self.animation_start.elapsed().as_millis() as u64

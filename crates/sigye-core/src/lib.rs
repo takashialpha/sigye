@@ -643,6 +643,16 @@ impl ColorTheme {
         }
     }
 
+    /// Get a dimmed version of the current theme color for secondary text.
+    pub fn secondary_color(self) -> Color {
+        dim_color(self.color(), 0.45)
+    }
+
+    /// Get a brighter dimmed version of the current theme color for muted text.
+    pub fn muted_color(self) -> Color {
+        dim_color(self.color(), 0.65)
+    }
+
     /// Check if this theme requires per-character coloring.
     pub fn is_dynamic(self) -> bool {
         matches!(
@@ -994,19 +1004,39 @@ fn apply_reactive(color: Color, flash_intensity: f32) -> Color {
     )
 }
 
-/// Extract RGB values from a Color.
-fn color_to_rgb(color: Color) -> (u8, u8, u8) {
+/// Extract RGB values from a color.
+pub fn color_to_rgb(color: Color) -> (u8, u8, u8) {
     match color {
         Color::Rgb(r, g, b) => (r, g, b),
+        Color::Black => (0, 0, 0),
         Color::Red => (255, 0, 0),
         Color::Green => (0, 255, 0),
         Color::Blue => (0, 0, 255),
         Color::Yellow => (255, 255, 0),
         Color::Magenta => (255, 0, 255),
         Color::Cyan => (0, 255, 255),
+        Color::Gray => (128, 128, 128),
+        Color::DarkGray => (80, 80, 80),
+        Color::LightRed => (255, 85, 85),
+        Color::LightGreen => (85, 255, 85),
+        Color::LightYellow => (255, 255, 85),
+        Color::LightBlue => (85, 85, 255),
+        Color::LightMagenta => (255, 85, 255),
+        Color::LightCyan => (85, 255, 255),
         Color::White => (255, 255, 255),
         _ => (128, 128, 128),
     }
+}
+
+/// Scale a color's RGB channels by a clamped factor.
+pub fn dim_color(color: Color, factor: f32) -> Color {
+    let factor = factor.clamp(0.0, 1.0);
+    let (r, g, b) = color_to_rgb(color);
+    Color::Rgb(
+        (r as f32 * factor) as u8,
+        (g as f32 * factor) as u8,
+        (b as f32 * factor) as u8,
+    )
 }
 
 /// Convert RGB to HSL.
@@ -1088,4 +1118,58 @@ fn hue_to_rgb(p: f32, q: f32, mut t: f32) -> f32 {
 pub fn is_colon_visible(elapsed_ms: u64) -> bool {
     let phase = (elapsed_ms % 1000) as f32 / 1000.0;
     phase < 0.5
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn color_to_rgb_maps_named_colors_used_by_app() {
+        let cases = [
+            (Color::Cyan, (0, 255, 255)),
+            (Color::Green, (0, 255, 0)),
+            (Color::White, (255, 255, 255)),
+            (Color::Magenta, (255, 0, 255)),
+            (Color::Yellow, (255, 255, 0)),
+            (Color::Red, (255, 0, 0)),
+            (Color::Blue, (0, 0, 255)),
+            (Color::Gray, (128, 128, 128)),
+            (Color::DarkGray, (80, 80, 80)),
+            (Color::Black, (0, 0, 0)),
+            (Color::LightRed, (255, 85, 85)),
+            (Color::LightGreen, (85, 255, 85)),
+            (Color::LightYellow, (255, 255, 85)),
+            (Color::LightBlue, (85, 85, 255)),
+            (Color::LightMagenta, (255, 85, 255)),
+            (Color::LightCyan, (85, 255, 255)),
+        ];
+
+        for (color, expected) in cases {
+            assert_eq!(color_to_rgb(color), expected);
+        }
+    }
+
+    #[test]
+    fn color_to_rgb_passes_through_rgb_and_defaults_indexed_reset_to_gray() {
+        assert_eq!(color_to_rgb(Color::Rgb(12, 34, 56)), (12, 34, 56));
+        assert_eq!(color_to_rgb(Color::Indexed(7)), (128, 128, 128));
+        assert_eq!(color_to_rgb(Color::Reset), (128, 128, 128));
+    }
+
+    #[test]
+    fn dim_color_scales_rgb_channels_and_clamps_factor() {
+        assert_eq!(
+            dim_color(Color::Rgb(200, 100, 50), 0.5),
+            Color::Rgb(100, 50, 25)
+        );
+        assert_eq!(dim_color(Color::Red, 2.0), Color::Rgb(255, 0, 0));
+        assert_eq!(dim_color(Color::Blue, -1.0), Color::Rgb(0, 0, 0));
+    }
+
+    #[test]
+    fn color_theme_provides_secondary_and_muted_colors() {
+        assert_eq!(ColorTheme::Cyan.secondary_color(), Color::Rgb(0, 114, 114));
+        assert_eq!(ColorTheme::Cyan.muted_color(), Color::Rgb(0, 165, 165));
+    }
 }
