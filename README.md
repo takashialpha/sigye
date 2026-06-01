@@ -57,6 +57,12 @@ A feature-rich terminal clock with ASCII art fonts, animated backgrounds, and pr
 
 ## Installation
 
+### Pre-built binaries
+
+Download pre-built binaries from the [GitHub Releases](https://github.com/am2rican5/sigye/releases) page.
+
+Supported platforms: Linux x86_64 gnu/musl, Linux aarch64, macOS Intel + Apple Silicon, Windows x86_64.
+
 ### From crates.io
 
 ```bash
