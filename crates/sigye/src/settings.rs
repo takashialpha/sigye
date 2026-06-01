@@ -78,6 +78,12 @@ enum RowKind {
     Spacer,
 }
 
+#[derive(Clone, Copy)]
+struct DialogTextColors {
+    dim: Color,
+    muted: Color,
+}
+
 /// Settings dialog state.
 #[derive(Debug)]
 pub struct SettingsDialog {
@@ -540,10 +546,18 @@ impl SettingsDialog {
     }
 
     /// Render the settings dialog.
-    pub fn render(&mut self, frame: &mut Frame, area: Rect, accent_color: Color) {
+    pub fn render(
+        &mut self,
+        frame: &mut Frame,
+        area: Rect,
+        accent_color: Color,
+        dim: Color,
+        muted: Color,
+    ) {
         if !self.visible {
             return;
         }
+        let text_colors = DialogTextColors { dim, muted };
 
         let layout = Self::section_layout();
         let total_content_rows = layout.len() as u16;
@@ -623,7 +637,7 @@ impl SettingsDialog {
                     );
                 }
                 RowKind::Field(field) => {
-                    let line = self.render_field_for(*field, accent_color);
+                    let line = self.render_field_for(*field, accent_color, text_colors);
                     frame
                         .render_widget(Paragraph::new(line).alignment(Alignment::Center), row_area);
                 }
@@ -662,13 +676,13 @@ impl SettingsDialog {
         // Render help text
         let help = Line::from(vec![
             Span::styled("↑↓", Style::default().fg(accent_color).bold()),
-            Span::styled(" nav  ", Style::default().fg(Color::Gray)),
+            Span::styled(" nav  ", Style::default().fg(muted)),
             Span::styled("←→", Style::default().fg(accent_color).bold()),
-            Span::styled(" change  ", Style::default().fg(Color::Gray)),
+            Span::styled(" change  ", Style::default().fg(muted)),
             Span::styled("Enter", Style::default().fg(accent_color).bold()),
-            Span::styled(" save  ", Style::default().fg(Color::Gray)),
+            Span::styled(" save  ", Style::default().fg(muted)),
             Span::styled("Esc", Style::default().fg(accent_color).bold()),
-            Span::styled(" cancel", Style::default().fg(Color::Gray)),
+            Span::styled(" cancel", Style::default().fg(muted)),
         ]);
         frame.render_widget(Paragraph::new(help).alignment(Alignment::Center), chunks[3]);
     }
@@ -682,38 +696,49 @@ impl SettingsDialog {
     }
 
     /// Render the appropriate field line for a given SettingsField.
-    fn render_field_for(&self, field: SettingsField, accent_color: Color) -> Line<'static> {
+    fn render_field_for(
+        &self,
+        field: SettingsField,
+        accent_color: Color,
+        text_colors: DialogTextColors,
+    ) -> Line<'static> {
         let selected = self.selected_field == field;
         match field {
-            SettingsField::Font => {
-                self.render_field("Font", self.selected_font(), selected, accent_color)
-            }
+            SettingsField::Font => self.render_field(
+                "Font",
+                self.selected_font(),
+                selected,
+                accent_color,
+                text_colors.muted,
+            ),
             SettingsField::Color => self.render_field(
                 "Color",
                 self.color_theme.display_name(),
                 selected,
                 accent_color,
+                text_colors.muted,
             ),
             SettingsField::TimeFormat => {
                 let name = match self.time_format {
                     TimeFormat::TwentyFourHour => "24-hour",
                     TimeFormat::TwelveHour => "12-hour",
                 };
-                self.render_field("Format", name, selected, accent_color)
+                self.render_field("Format", name, selected, accent_color, text_colors.muted)
             }
             SettingsField::ShowSeconds => {
                 let v = if self.show_seconds { "On" } else { "Off" };
-                self.render_field("Seconds", v, selected, accent_color)
+                self.render_field("Seconds", v, selected, accent_color, text_colors.muted)
             }
             SettingsField::ColonBlink => {
                 let v = if self.colon_blink { "On" } else { "Off" };
-                self.render_field("Colon Blink", v, selected, accent_color)
+                self.render_field("Colon Blink", v, selected, accent_color, text_colors.muted)
             }
             SettingsField::Animation => self.render_field(
                 "Animation",
                 self.animation_style.display_name(),
                 selected,
                 accent_color,
+                text_colors.muted,
             ),
             SettingsField::Speed => self.render_field_with_style(
                 "Speed",
@@ -721,28 +746,30 @@ impl SettingsDialog {
                 selected,
                 accent_color,
                 self.animation_style != AnimationStyle::None,
+                text_colors,
             ),
             SettingsField::Background => self.render_field(
                 "Background",
                 self.background_style.display_name(),
                 selected,
                 accent_color,
+                text_colors.muted,
             ),
             SettingsField::PomodoroWork => {
                 let v = format!("{} min", self.pomodoro_work_mins);
-                self.render_field("Work", &v, selected, accent_color)
+                self.render_field("Work", &v, selected, accent_color, text_colors.muted)
             }
             SettingsField::PomodoroBreak => {
                 let v = format!("{} min", self.pomodoro_break_mins);
-                self.render_field("Break", &v, selected, accent_color)
+                self.render_field("Break", &v, selected, accent_color, text_colors.muted)
             }
             SettingsField::PomodoroLongBreak => {
                 let v = format!("{} min", self.pomodoro_long_break_mins);
-                self.render_field("Long Break", &v, selected, accent_color)
+                self.render_field("Long Break", &v, selected, accent_color, text_colors.muted)
             }
             SettingsField::PomodoroSound => {
                 let v = if self.pomodoro_sound { "On" } else { "Off" };
-                self.render_field("Sound", v, selected, accent_color)
+                self.render_field("Sound", v, selected, accent_color, text_colors.muted)
             }
             SettingsField::DesktopNotifications => {
                 let v = if self.desktop_notifications {
@@ -750,11 +777,17 @@ impl SettingsDialog {
                 } else {
                     "Off"
                 };
-                self.render_field("Notifications", v, selected, accent_color)
+                self.render_field(
+                    "Notifications",
+                    v,
+                    selected,
+                    accent_color,
+                    text_colors.muted,
+                )
             }
             SettingsField::TimerDuration => {
                 let v = format!("{} min", self.timer_duration_mins);
-                self.render_field("Duration", &v, selected, accent_color)
+                self.render_field("Duration", &v, selected, accent_color, text_colors.muted)
             }
         }
     }
@@ -766,6 +799,7 @@ impl SettingsDialog {
         value: &str,
         selected: bool,
         accent_color: Color,
+        muted: Color,
     ) -> Line<'static> {
         if selected {
             let arrow_style = Style::default().fg(accent_color).bold();
@@ -779,7 +813,7 @@ impl SettingsDialog {
                 Span::styled(String::from(" ▶"), arrow_style),
             ])
         } else {
-            let label_style = Style::default().fg(Color::Gray);
+            let label_style = Style::default().fg(muted);
             let value_style = Style::default().fg(Color::White);
             Line::from(vec![
                 Span::styled(String::from("  "), Style::default()),
@@ -797,10 +831,11 @@ impl SettingsDialog {
         selected: bool,
         accent_color: Color,
         enabled: bool,
+        text_colors: DialogTextColors,
     ) -> Line<'static> {
         if !enabled {
             // Grayed out when disabled - no arrows
-            let gray = Style::default().fg(Color::DarkGray);
+            let gray = Style::default().fg(text_colors.dim);
             return Line::from(vec![
                 Span::styled(String::from("  "), Style::default()),
                 Span::styled(format!("{label}: "), gray),
@@ -808,6 +843,69 @@ impl SettingsDialog {
             ]);
         }
 
-        self.render_field(label, value, selected, accent_color)
+        self.render_field(label, value, selected, accent_color, text_colors.muted)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::{Terminal, backend::TestBackend};
+
+    #[test]
+    fn render_uses_dim_and_muted_for_secondary_text() {
+        let mut terminal = Terminal::new(TestBackend::new(80, 30)).unwrap();
+        let mut dialog = SettingsDialog::new(vec!["Standard".into()]);
+        dialog.open(
+            "Standard",
+            ColorTheme::Cyan,
+            TimeFormat::TwentyFourHour,
+            AnimationStyle::None,
+            AnimationSpeed::Medium,
+            true,
+            true,
+            BackgroundStyle::None,
+            25,
+            5,
+            15,
+            true,
+            true,
+            5,
+        );
+        let accent = Color::Red;
+        let dim = Color::Rgb(10, 20, 30);
+        let muted = Color::Rgb(40, 50, 60);
+
+        terminal
+            .draw(|frame| dialog.render(frame, frame.area(), accent, dim, muted))
+            .unwrap();
+
+        let backend = terminal.backend();
+        assert_eq!(color_of_text(backend, "Color: "), Some(muted));
+        assert_eq!(color_of_text(backend, "Speed: "), Some(dim));
+        assert_eq!(color_of_text(backend, " nav  "), Some(muted));
+        assert_eq!(color_of_text(backend, "Cyan"), Some(Color::White));
+    }
+
+    fn color_of_text(backend: &TestBackend, text: &str) -> Option<Color> {
+        let buffer = backend.buffer();
+        let area = buffer.area;
+        for y in area.top()..area.bottom() {
+            for x in area.left()..area.right() {
+                if text_matches_at(backend, x, y, text) {
+                    return buffer.cell((x, y)).map(|cell| cell.fg);
+                }
+            }
+        }
+        None
+    }
+
+    fn text_matches_at(backend: &TestBackend, x: u16, y: u16, text: &str) -> bool {
+        let buffer = backend.buffer();
+        text.chars().enumerate().all(|(offset, ch)| {
+            buffer
+                .cell((x + offset as u16, y))
+                .is_some_and(|cell| cell.symbol() == ch.to_string())
+        })
     }
 }

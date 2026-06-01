@@ -645,12 +645,12 @@ impl ColorTheme {
 
     /// Get a dimmed version of the current theme color for secondary text.
     pub fn secondary_color(self) -> Color {
-        dim_color(self.color(), 0.45)
+        blend_toward_gray(self.color(), 110, 0.55)
     }
 
     /// Get a brighter dimmed version of the current theme color for muted text.
     pub fn muted_color(self) -> Color {
-        dim_color(self.color(), 0.65)
+        blend_toward_gray(self.color(), 150, 0.50)
     }
 
     /// Check if this theme requires per-character coloring.
@@ -1039,6 +1039,14 @@ pub fn dim_color(color: Color, factor: f32) -> Color {
     )
 }
 
+/// Blend a color toward neutral gray while retaining some theme tint.
+pub fn blend_toward_gray(color: Color, baseline: u8, tint: f32) -> Color {
+    let tint = tint.clamp(0.0, 1.0);
+    let (r, g, b) = color_to_rgb(color);
+    let mix = |channel: u8| (baseline as f32 * (1.0 - tint) + channel as f32 * tint).round() as u8;
+    Color::Rgb(mix(r), mix(g), mix(b))
+}
+
 /// Convert RGB to HSL.
 fn rgb_to_hsl(r: u8, g: u8, b: u8) -> (f32, f32, f32) {
     let r = r as f32 / 255.0;
@@ -1124,6 +1132,32 @@ pub fn is_colon_visible(elapsed_ms: u64) -> bool {
 mod tests {
     use super::*;
 
+    const TEST_THEMES: &[ColorTheme] = &[
+        ColorTheme::Cyan,
+        ColorTheme::Green,
+        ColorTheme::White,
+        ColorTheme::Magenta,
+        ColorTheme::Yellow,
+        ColorTheme::Red,
+        ColorTheme::Blue,
+        ColorTheme::Rainbow,
+        ColorTheme::RainbowVertical,
+        ColorTheme::GradientWarm,
+        ColorTheme::GradientCool,
+        ColorTheme::GradientOcean,
+        ColorTheme::GradientNeon,
+        ColorTheme::GradientFire,
+        ColorTheme::GradientFrost,
+        ColorTheme::GradientAurora,
+        ColorTheme::GradientWinter,
+        ColorTheme::GradientSakura,
+    ];
+
+    fn luminance(color: Color) -> f32 {
+        let (r, g, b) = color_to_rgb(color);
+        0.299 * r as f32 + 0.587 * g as f32 + 0.114 * b as f32
+    }
+
     #[test]
     fn color_to_rgb_maps_named_colors_used_by_app() {
         let cases = [
@@ -1168,8 +1202,43 @@ mod tests {
     }
 
     #[test]
-    fn color_theme_provides_secondary_and_muted_colors() {
-        assert_eq!(ColorTheme::Cyan.secondary_color(), Color::Rgb(0, 114, 114));
-        assert_eq!(ColorTheme::Cyan.muted_color(), Color::Rgb(0, 165, 165));
+    fn blend_toward_gray_mixes_theme_with_baseline_and_clamps_tint() {
+        assert_eq!(
+            blend_toward_gray(Color::Blue, 110, 0.55),
+            Color::Rgb(50, 50, 190)
+        );
+        assert_eq!(
+            blend_toward_gray(Color::Rgb(10, 20, 30), 110, -1.0),
+            Color::Rgb(110, 110, 110)
+        );
+        assert_eq!(
+            blend_toward_gray(Color::Rgb(10, 20, 30), 110, 2.0),
+            Color::Rgb(10, 20, 30)
+        );
+    }
+
+    #[test]
+    fn color_theme_provides_contrast_aware_secondary_and_muted_colors() {
+        assert_eq!(ColorTheme::Cyan.secondary_color(), Color::Rgb(50, 190, 190));
+        assert_eq!(ColorTheme::Cyan.muted_color(), Color::Rgb(75, 203, 203));
+    }
+
+    #[test]
+    fn secondary_and_muted_colors_stay_readable_for_every_theme() {
+        for theme in TEST_THEMES {
+            let secondary_luminance = luminance(theme.secondary_color());
+            let muted_luminance = luminance(theme.muted_color());
+
+            assert!(
+                secondary_luminance >= 50.0,
+                "{} secondary luminance {secondary_luminance}",
+                theme.display_name()
+            );
+            assert!(
+                muted_luminance >= secondary_luminance,
+                "{} muted luminance {muted_luminance} < secondary {secondary_luminance}",
+                theme.display_name()
+            );
+        }
     }
 }
