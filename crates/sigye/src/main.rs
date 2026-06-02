@@ -439,15 +439,19 @@ impl App {
 
         // Render dialogs (last visible wins) — settings, then mode picker, then countdown editor.
         let color = self.ctx.color();
+        let dim = self.ctx.dim_color();
+        let muted = self.ctx.muted_color();
         let area = frame.area();
-        self.settings_dialog.render(frame, area, color);
+        self.settings_dialog.render(frame, area, color, dim, muted);
         self.mode_dialog.render(
             frame,
             area,
             color,
+            dim,
+            muted,
             self.modes[self.active_mode_index].display_mode(),
         );
-        self.countdown_dialog.render(frame, area, color);
+        self.countdown_dialog.render(frame, area, color, dim, muted);
 
         // Render help overlay
         self.render_help_overlay(frame);
@@ -747,7 +751,7 @@ impl App {
 
         let accent = self.ctx.color();
         let fg = Color::White;
-        let dim = Color::Gray;
+        let dim = self.ctx.muted_color();
 
         let key_line = |key: &'static str, desc: &'static str| -> Line<'static> {
             Line::from(vec![

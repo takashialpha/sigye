@@ -92,7 +92,15 @@ impl ModeDialog {
     }
 
     /// Render the dialog. `current` marks the active mode with a dot.
-    pub fn render(&self, frame: &mut Frame, area: Rect, accent: Color, current: DisplayMode) {
+    pub fn render(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        accent: Color,
+        _dim: Color,
+        muted: Color,
+        current: DisplayMode,
+    ) {
         if !self.visible {
             return;
         }
@@ -139,7 +147,7 @@ impl ModeDialog {
             } else if is_current {
                 Style::default().fg(Color::White)
             } else {
-                Style::default().fg(Color::Gray)
+                Style::default().fg(muted)
             };
 
             lines.push(Line::from(vec![
@@ -158,13 +166,13 @@ impl ModeDialog {
 
         let help = Line::from(vec![
             Span::styled("↑↓", Style::default().fg(accent).bold()),
-            Span::styled(" nav  ", Style::default().fg(Color::Gray)),
+            Span::styled(" nav  ", Style::default().fg(muted)),
             Span::styled("1-6", Style::default().fg(accent).bold()),
-            Span::styled(" jump  ", Style::default().fg(Color::Gray)),
+            Span::styled(" jump  ", Style::default().fg(muted)),
             Span::styled("Enter", Style::default().fg(accent).bold()),
-            Span::styled(" pick  ", Style::default().fg(Color::Gray)),
+            Span::styled(" pick  ", Style::default().fg(muted)),
             Span::styled("Esc", Style::default().fg(accent).bold()),
-            Span::styled(" cancel", Style::default().fg(Color::Gray)),
+            Span::styled(" cancel", Style::default().fg(muted)),
         ]);
         frame.render_widget(Paragraph::new(help).alignment(Alignment::Center), chunks[3]);
     }
@@ -174,6 +182,7 @@ impl ModeDialog {
 mod tests {
     use super::*;
     use crossterm::event::{KeyEventKind, KeyEventState, KeyModifiers};
+    use ratatui::{Terminal, backend::TestBackend};
 
     fn key(code: KeyCode) -> KeyEvent {
         KeyEvent {
@@ -232,5 +241,43 @@ mod tests {
         d.open(DisplayMode::Clock);
         d.handle_key(key(KeyCode::Up));
         assert_eq!(MODES[d.selected], DisplayMode::Countdown);
+    }
+
+    #[test]
+    fn render_uses_muted_for_secondary_help_text() {
+        let mut terminal = Terminal::new(TestBackend::new(50, 16)).unwrap();
+        let mut d = ModeDialog::new();
+        d.open(DisplayMode::Clock);
+        let accent = Color::Red;
+        let dim = Color::Rgb(10, 20, 30);
+        let muted = Color::Rgb(40, 50, 60);
+
+        terminal
+            .draw(|frame| d.render(frame, frame.area(), accent, dim, muted, DisplayMode::Clock))
+            .unwrap();
+
+        assert_eq!(color_of_text(terminal.backend(), " nav  "), Some(muted));
+    }
+
+    fn color_of_text(backend: &TestBackend, text: &str) -> Option<Color> {
+        let buffer = backend.buffer();
+        let area = buffer.area;
+        for y in area.top()..area.bottom() {
+            for x in area.left()..area.right() {
+                if text_matches_at(backend, x, y, text) {
+                    return buffer.cell((x, y)).map(|cell| cell.fg);
+                }
+            }
+        }
+        None
+    }
+
+    fn text_matches_at(backend: &TestBackend, x: u16, y: u16, text: &str) -> bool {
+        let buffer = backend.buffer();
+        text.chars().enumerate().all(|(offset, ch)| {
+            buffer
+                .cell((x + offset as u16, y))
+                .is_some_and(|cell| cell.symbol() == ch.to_string())
+        })
     }
 }

@@ -255,11 +255,12 @@ impl CountdownDialog {
                     form.name.pop();
                     self.error = None;
                 }
-                KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    if form.name.chars().count() < NAME_MAX {
-                        form.name.push(c);
-                        self.error = None;
-                    }
+                KeyCode::Char(c)
+                    if !key.modifiers.contains(KeyModifiers::CONTROL)
+                        && form.name.chars().count() < NAME_MAX =>
+                {
+                    form.name.push(c);
+                    self.error = None;
                 }
                 _ => {}
             },
@@ -268,11 +269,12 @@ impl CountdownDialog {
                     form.target.pop();
                     self.error = None;
                 }
-                KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    if form.target.chars().count() < TARGET_MAX {
-                        form.target.push(c);
-                        self.error = None;
-                    }
+                KeyCode::Char(c)
+                    if !key.modifiers.contains(KeyModifiers::CONTROL)
+                        && form.target.chars().count() < TARGET_MAX =>
+                {
+                    form.target.push(c);
+                    self.error = None;
                 }
                 _ => {}
             },
@@ -287,17 +289,17 @@ impl CountdownDialog {
     }
 
     /// Render the dialog (list or edit view depending on state).
-    pub fn render(&self, frame: &mut Frame, area: Rect, accent: Color) {
+    pub fn render(&self, frame: &mut Frame, area: Rect, accent: Color, dim: Color, muted: Color) {
         if !self.visible {
             return;
         }
         match self.view {
-            View::List => self.render_list(frame, area, accent),
-            View::Edit => self.render_edit(frame, area, accent),
+            View::List => self.render_list(frame, area, accent, dim, muted),
+            View::Edit => self.render_edit(frame, area, accent, dim, muted),
         }
     }
 
-    fn render_list(&self, frame: &mut Frame, area: Rect, accent: Color) {
+    fn render_list(&self, frame: &mut Frame, area: Rect, accent: Color, dim: Color, muted: Color) {
         let dialog_width = 60u16.min(area.width.saturating_sub(4));
         // border(2) + padding(2) + title(1) + entries (cap 10) + help(2)
         let row_count = self.events.len().clamp(1, 10) as u16;
@@ -327,14 +329,11 @@ impl CountdownDialog {
         if self.events.is_empty() {
             let lines = vec![
                 Line::from(""),
-                Line::from(Span::styled(
-                    "No events yet.",
-                    Style::default().fg(Color::Gray),
-                ))
-                .alignment(Alignment::Center),
+                Line::from(Span::styled("No events yet.", Style::default().fg(muted)))
+                    .alignment(Alignment::Center),
                 Line::from(Span::styled(
                     "Press [a] to add your first one.",
-                    Style::default().fg(Color::DarkGray),
+                    Style::default().fg(dim),
                 ))
                 .alignment(Alignment::Center),
             ];
@@ -349,14 +348,11 @@ impl CountdownDialog {
                 let style = if is_selected {
                     Style::default().fg(accent).bold()
                 } else {
-                    Style::default().fg(Color::Gray)
+                    Style::default().fg(muted)
                 };
                 lines.push(Line::from(vec![
                     Span::styled(main, style),
-                    Span::styled(
-                        format!("  {direction}"),
-                        Style::default().fg(Color::DarkGray),
-                    ),
+                    Span::styled(format!("  {direction}"), Style::default().fg(dim)),
                 ]));
             }
             frame.render_widget(Paragraph::new(lines), list_area);
@@ -364,19 +360,19 @@ impl CountdownDialog {
 
         let help_a = Line::from(vec![
             Span::styled("↑↓", Style::default().fg(accent).bold()),
-            Span::styled(" nav  ", Style::default().fg(Color::Gray)),
+            Span::styled(" nav  ", Style::default().fg(muted)),
             Span::styled("a", Style::default().fg(accent).bold()),
-            Span::styled(" add  ", Style::default().fg(Color::Gray)),
+            Span::styled(" add  ", Style::default().fg(muted)),
             Span::styled("e", Style::default().fg(accent).bold()),
-            Span::styled(" edit  ", Style::default().fg(Color::Gray)),
+            Span::styled(" edit  ", Style::default().fg(muted)),
             Span::styled("d", Style::default().fg(accent).bold()),
-            Span::styled(" delete", Style::default().fg(Color::Gray)),
+            Span::styled(" delete", Style::default().fg(muted)),
         ]);
         let help_b = Line::from(vec![
             Span::styled("Enter", Style::default().fg(accent).bold()),
-            Span::styled(" save  ", Style::default().fg(Color::Gray)),
+            Span::styled(" save  ", Style::default().fg(muted)),
             Span::styled("Esc", Style::default().fg(accent).bold()),
-            Span::styled(" cancel", Style::default().fg(Color::Gray)),
+            Span::styled(" cancel", Style::default().fg(muted)),
         ]);
         frame.render_widget(
             Paragraph::new(help_a).alignment(Alignment::Center),
@@ -388,7 +384,7 @@ impl CountdownDialog {
         );
     }
 
-    fn render_edit(&self, frame: &mut Frame, area: Rect, accent: Color) {
+    fn render_edit(&self, frame: &mut Frame, area: Rect, accent: Color, dim: Color, muted: Color) {
         let form = match self.form.as_ref() {
             Some(f) => f,
             None => return,
@@ -434,6 +430,7 @@ impl CountdownDialog {
                 &form.name,
                 form.field == FormField::Name,
                 accent,
+                muted,
             )),
             row_area(1),
         );
@@ -443,13 +440,14 @@ impl CountdownDialog {
                 &form.target,
                 form.field == FormField::Target,
                 accent,
+                muted,
             )),
             row_area(2),
         );
         frame.render_widget(
             Paragraph::new(Line::from(Span::styled(
                 "         e.g. 2026-06-01  or  2026-06-01T09:00:00+09:00",
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(dim),
             ))),
             row_area(3),
         );
@@ -459,6 +457,7 @@ impl CountdownDialog {
                 form.since,
                 form.field == FormField::Since,
                 accent,
+                muted,
             )),
             row_area(4),
         );
@@ -476,11 +475,11 @@ impl CountdownDialog {
 
         let help = Line::from(vec![
             Span::styled("Tab", Style::default().fg(accent).bold()),
-            Span::styled(" field  ", Style::default().fg(Color::Gray)),
+            Span::styled(" field  ", Style::default().fg(muted)),
             Span::styled("Enter", Style::default().fg(accent).bold()),
-            Span::styled(" commit  ", Style::default().fg(Color::Gray)),
+            Span::styled(" commit  ", Style::default().fg(muted)),
             Span::styled("Esc", Style::default().fg(accent).bold()),
-            Span::styled(" cancel", Style::default().fg(Color::Gray)),
+            Span::styled(" cancel", Style::default().fg(muted)),
         ]);
         frame.render_widget(Paragraph::new(help).alignment(Alignment::Center), chunks[8]);
     }
@@ -491,11 +490,12 @@ impl CountdownDialog {
         value: &str,
         focused: bool,
         accent: Color,
+        muted: Color,
     ) -> Line<'static> {
         let label_style = if focused {
             Style::default().fg(accent).bold()
         } else {
-            Style::default().fg(Color::Gray)
+            Style::default().fg(muted)
         };
         let field_style = if focused {
             Style::default().fg(Color::White).bg(Color::Rgb(40, 40, 40))
@@ -516,11 +516,12 @@ impl CountdownDialog {
         value: bool,
         focused: bool,
         accent: Color,
+        muted: Color,
     ) -> Line<'static> {
         let label_style = if focused {
             Style::default().fg(accent).bold()
         } else {
-            Style::default().fg(Color::Gray)
+            Style::default().fg(muted)
         };
         let toggle = if value {
             "[x] count up"
@@ -558,6 +559,7 @@ fn inset(area: Rect, padding: u16) -> Rect {
 mod tests {
     use super::*;
     use crossterm::event::{KeyEventKind, KeyEventState, KeyModifiers};
+    use ratatui::{Terminal, backend::TestBackend};
 
     fn key(code: KeyCode) -> KeyEvent {
         KeyEvent {
@@ -706,5 +708,72 @@ mod tests {
         d.handle_key(key(KeyCode::Char(' ')));
         d.handle_key(key(KeyCode::Enter));
         assert!(d.events[0].since);
+    }
+
+    #[test]
+    fn render_list_uses_dim_and_muted_for_secondary_text() {
+        let mut terminal = Terminal::new(TestBackend::new(80, 20)).unwrap();
+        let mut d = CountdownDialog::new();
+        d.open(vec![CountdownEvent {
+            name: "Launch".into(),
+            target: "2026-06-01".into(),
+            since: false,
+        }]);
+        let accent = Color::Red;
+        let dim = Color::Rgb(10, 20, 30);
+        let muted = Color::Rgb(40, 50, 60);
+
+        terminal
+            .draw(|frame| d.render(frame, frame.area(), accent, dim, muted))
+            .unwrap();
+
+        let backend = terminal.backend();
+        assert_eq!(color_of_text(backend, " until"), Some(dim));
+        assert_eq!(color_of_text(backend, " nav  "), Some(muted));
+    }
+
+    #[test]
+    fn render_edit_keeps_inputs_white_and_uses_dim_for_hint() {
+        let mut terminal = Terminal::new(TestBackend::new(80, 20)).unwrap();
+        let mut d = CountdownDialog::new();
+        d.open(vec![]);
+        d.handle_key(key(KeyCode::Char('a')));
+        for c in "Launch".chars() {
+            d.handle_key(key(KeyCode::Char(c)));
+        }
+        let accent = Color::Red;
+        let dim = Color::Rgb(10, 20, 30);
+        let muted = Color::Rgb(40, 50, 60);
+
+        terminal
+            .draw(|frame| d.render(frame, frame.area(), accent, dim, muted))
+            .unwrap();
+
+        let backend = terminal.backend();
+        assert_eq!(color_of_text(backend, "e.g. 2026-06-01"), Some(dim));
+        assert_eq!(color_of_text(backend, "Launch"), Some(Color::White));
+        assert_eq!(color_of_text(backend, " field  "), Some(muted));
+    }
+
+    fn color_of_text(backend: &TestBackend, text: &str) -> Option<Color> {
+        let buffer = backend.buffer();
+        let area = buffer.area;
+        for y in area.top()..area.bottom() {
+            for x in area.left()..area.right() {
+                if text_matches_at(backend, x, y, text) {
+                    return buffer.cell((x, y)).map(|cell| cell.fg);
+                }
+            }
+        }
+        None
+    }
+
+    fn text_matches_at(backend: &TestBackend, x: u16, y: u16, text: &str) -> bool {
+        let buffer = backend.buffer();
+        text.chars().enumerate().all(|(offset, ch)| {
+            buffer
+                .cell((x + offset as u16, y))
+                .is_some_and(|cell| cell.symbol() == ch.to_string())
+        })
     }
 }

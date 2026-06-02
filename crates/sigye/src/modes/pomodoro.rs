@@ -207,7 +207,7 @@ impl Mode for PomodoroMode {
             self.sessions_completed,
             self.total_focus_secs / 60
         );
-        render::render_centered_text(frame, chunks[3], &session_str, Color::DarkGray);
+        render::render_centered_text(frame, chunks[3], &session_str, ctx.dim_color());
 
         // Progress bar
         let total_secs = phase_duration_secs(self.phase, ctx);
@@ -227,7 +227,7 @@ impl Mode for PomodoroMode {
             .map(|(k, v)| format!("[{k}] {v}"))
             .collect::<Vec<_>>()
             .join("  ");
-        render::render_centered_text(frame, chunks[6], &hint_str, Color::DarkGray);
+        render::render_centered_text(frame, chunks[6], &hint_str, ctx.dim_color());
     }
 
     fn handle_key(&mut self, key: KeyEvent, ctx: &mut RenderContext) -> bool {

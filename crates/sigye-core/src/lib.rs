@@ -643,6 +643,16 @@ impl ColorTheme {
         }
     }
 
+    /// Get a dimmed version of the current theme color for secondary text.
+    pub fn secondary_color(self) -> Color {
+        ensure_min_contrast_on_black(blend_toward_gray(self.color(), 110, 0.55), 3.0)
+    }
+
+    /// Get a brighter dimmed version of the current theme color for muted text.
+    pub fn muted_color(self) -> Color {
+        ensure_min_contrast_on_black(blend_toward_gray(self.color(), 150, 0.50), 4.5)
+    }
+
     /// Check if this theme requires per-character coloring.
     pub fn is_dynamic(self) -> bool {
         matches!(
@@ -994,19 +1004,93 @@ fn apply_reactive(color: Color, flash_intensity: f32) -> Color {
     )
 }
 
-/// Extract RGB values from a Color.
-fn color_to_rgb(color: Color) -> (u8, u8, u8) {
+/// Extract RGB values from a color.
+pub fn color_to_rgb(color: Color) -> (u8, u8, u8) {
     match color {
         Color::Rgb(r, g, b) => (r, g, b),
+        Color::Black => (0, 0, 0),
         Color::Red => (255, 0, 0),
         Color::Green => (0, 255, 0),
         Color::Blue => (0, 0, 255),
         Color::Yellow => (255, 255, 0),
         Color::Magenta => (255, 0, 255),
         Color::Cyan => (0, 255, 255),
+        Color::Gray => (128, 128, 128),
+        Color::DarkGray => (80, 80, 80),
+        Color::LightRed => (255, 85, 85),
+        Color::LightGreen => (85, 255, 85),
+        Color::LightYellow => (255, 255, 85),
+        Color::LightBlue => (85, 85, 255),
+        Color::LightMagenta => (255, 85, 255),
+        Color::LightCyan => (85, 255, 255),
         Color::White => (255, 255, 255),
         _ => (128, 128, 128),
     }
+}
+
+/// Scale a color's RGB channels by a clamped factor.
+pub fn dim_color(color: Color, factor: f32) -> Color {
+    let factor = factor.clamp(0.0, 1.0);
+    let (r, g, b) = color_to_rgb(color);
+    Color::Rgb(
+        (r as f32 * factor) as u8,
+        (g as f32 * factor) as u8,
+        (b as f32 * factor) as u8,
+    )
+}
+
+/// Blend a color toward neutral gray while retaining some theme tint.
+pub fn blend_toward_gray(color: Color, baseline: u8, tint: f32) -> Color {
+    let tint = tint.clamp(0.0, 1.0);
+    let (r, g, b) = color_to_rgb(color);
+    let mix = |channel: u8| (baseline as f32 * (1.0 - tint) + channel as f32 * tint).round() as u8;
+    Color::Rgb(mix(r), mix(g), mix(b))
+}
+
+/// Convert one 8-bit sRGB channel to linear light.
+fn srgb_channel_to_linear(channel: u8) -> f32 {
+    let channel = channel as f32 / 255.0;
+    if channel <= 0.03928 {
+        channel / 12.92
+    } else {
+        ((channel + 0.055) / 1.055).powf(2.4)
+    }
+}
+
+/// WCAG relative luminance of a color.
+pub fn relative_luminance(color: Color) -> f32 {
+    let (r, g, b) = color_to_rgb(color);
+    0.2126 * srgb_channel_to_linear(r)
+        + 0.7152 * srgb_channel_to_linear(g)
+        + 0.0722 * srgb_channel_to_linear(b)
+}
+
+/// WCAG contrast ratio of a color against pure black.
+pub fn contrast_ratio_on_black(color: Color) -> f32 {
+    (relative_luminance(color) + 0.05) / 0.05
+}
+
+/// Lighten a color toward white until it meets a minimum contrast ratio on black.
+pub fn ensure_min_contrast_on_black(color: Color, min_ratio: f32) -> Color {
+    let (r, g, b) = color_to_rgb(color);
+    let color = Color::Rgb(r, g, b);
+    if contrast_ratio_on_black(color) >= min_ratio {
+        return color;
+    }
+
+    let lerp = |channel: u8, t: f32| (channel as f32 + (255.0 - channel as f32) * t).round() as u8;
+    let (mut lo, mut hi) = (0.0_f32, 1.0_f32);
+    for _ in 0..16 {
+        let mid = (lo + hi) / 2.0;
+        let candidate = Color::Rgb(lerp(r, mid), lerp(g, mid), lerp(b, mid));
+        if contrast_ratio_on_black(candidate) >= min_ratio {
+            hi = mid;
+        } else {
+            lo = mid;
+        }
+    }
+
+    Color::Rgb(lerp(r, hi), lerp(g, hi), lerp(b, hi))
 }
 
 /// Convert RGB to HSL.
@@ -1088,4 +1172,127 @@ fn hue_to_rgb(p: f32, q: f32, mut t: f32) -> f32 {
 pub fn is_colon_visible(elapsed_ms: u64) -> bool {
     let phase = (elapsed_ms % 1000) as f32 / 1000.0;
     phase < 0.5
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const TEST_THEMES: &[ColorTheme] = &[
+        ColorTheme::Cyan,
+        ColorTheme::Green,
+        ColorTheme::White,
+        ColorTheme::Magenta,
+        ColorTheme::Yellow,
+        ColorTheme::Red,
+        ColorTheme::Blue,
+        ColorTheme::Rainbow,
+        ColorTheme::RainbowVertical,
+        ColorTheme::GradientWarm,
+        ColorTheme::GradientCool,
+        ColorTheme::GradientOcean,
+        ColorTheme::GradientNeon,
+        ColorTheme::GradientFire,
+        ColorTheme::GradientFrost,
+        ColorTheme::GradientAurora,
+        ColorTheme::GradientWinter,
+        ColorTheme::GradientSakura,
+    ];
+
+    #[test]
+    fn color_to_rgb_maps_named_colors_used_by_app() {
+        let cases = [
+            (Color::Cyan, (0, 255, 255)),
+            (Color::Green, (0, 255, 0)),
+            (Color::White, (255, 255, 255)),
+            (Color::Magenta, (255, 0, 255)),
+            (Color::Yellow, (255, 255, 0)),
+            (Color::Red, (255, 0, 0)),
+            (Color::Blue, (0, 0, 255)),
+            (Color::Gray, (128, 128, 128)),
+            (Color::DarkGray, (80, 80, 80)),
+            (Color::Black, (0, 0, 0)),
+            (Color::LightRed, (255, 85, 85)),
+            (Color::LightGreen, (85, 255, 85)),
+            (Color::LightYellow, (255, 255, 85)),
+            (Color::LightBlue, (85, 85, 255)),
+            (Color::LightMagenta, (255, 85, 255)),
+            (Color::LightCyan, (85, 255, 255)),
+        ];
+
+        for (color, expected) in cases {
+            assert_eq!(color_to_rgb(color), expected);
+        }
+    }
+
+    #[test]
+    fn color_to_rgb_passes_through_rgb_and_defaults_indexed_reset_to_gray() {
+        assert_eq!(color_to_rgb(Color::Rgb(12, 34, 56)), (12, 34, 56));
+        assert_eq!(color_to_rgb(Color::Indexed(7)), (128, 128, 128));
+        assert_eq!(color_to_rgb(Color::Reset), (128, 128, 128));
+    }
+
+    #[test]
+    fn dim_color_scales_rgb_channels_and_clamps_factor() {
+        assert_eq!(
+            dim_color(Color::Rgb(200, 100, 50), 0.5),
+            Color::Rgb(100, 50, 25)
+        );
+        assert_eq!(dim_color(Color::Red, 2.0), Color::Rgb(255, 0, 0));
+        assert_eq!(dim_color(Color::Blue, -1.0), Color::Rgb(0, 0, 0));
+    }
+
+    #[test]
+    fn blend_toward_gray_mixes_theme_with_baseline_and_clamps_tint() {
+        assert_eq!(
+            blend_toward_gray(Color::Blue, 110, 0.55),
+            Color::Rgb(50, 50, 190)
+        );
+        assert_eq!(
+            blend_toward_gray(Color::Rgb(10, 20, 30), 110, -1.0),
+            Color::Rgb(110, 110, 110)
+        );
+        assert_eq!(
+            blend_toward_gray(Color::Rgb(10, 20, 30), 110, 2.0),
+            Color::Rgb(10, 20, 30)
+        );
+    }
+
+    #[test]
+    fn ensure_min_contrast_keeps_bright_colors_and_lightens_dark_colors() {
+        assert_eq!(
+            ensure_min_contrast_on_black(Color::White, 4.5),
+            Color::Rgb(255, 255, 255)
+        );
+
+        let dark = Color::Rgb(0, 0, 60);
+        let adjusted = ensure_min_contrast_on_black(dark, 4.5);
+
+        assert!(contrast_ratio_on_black(adjusted) >= 4.5);
+        assert_ne!(adjusted, dark);
+    }
+
+    #[test]
+    fn secondary_and_muted_colors_meet_wcag_contrast_floor_for_every_theme() {
+        for theme in TEST_THEMES {
+            let secondary_contrast = contrast_ratio_on_black(theme.secondary_color());
+            let muted_contrast = contrast_ratio_on_black(theme.muted_color());
+
+            assert!(
+                secondary_contrast >= 3.0,
+                "{} secondary contrast {secondary_contrast}",
+                theme.display_name()
+            );
+            assert!(
+                muted_contrast >= 4.5,
+                "{} muted contrast {muted_contrast}",
+                theme.display_name()
+            );
+            assert!(
+                muted_contrast >= secondary_contrast,
+                "{} muted contrast {muted_contrast} < secondary {secondary_contrast}",
+                theme.display_name()
+            );
+        }
+    }
 }

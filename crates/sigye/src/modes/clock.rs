@@ -10,7 +10,7 @@ use ratatui::{
     layout::{Constraint, Layout, Position, Rect},
     style::Color,
 };
-use sigye_core::{ClockDisplayFormat, DisplayMode, TimeFormat};
+use sigye_core::{ClockDisplayFormat, DisplayMode, TimeFormat, color_to_rgb};
 
 use crate::context::RenderContext;
 use crate::mode::Mode;
@@ -174,17 +174,7 @@ fn render_toast(frame: &mut Frame, area: Rect, text: &str, accent: Color, elapse
         1.0
     };
 
-    let (r, g, b) = match accent {
-        Color::Rgb(r, g, b) => (r, g, b),
-        Color::Cyan => (0, 255, 255),
-        Color::Green => (0, 255, 0),
-        Color::Magenta => (255, 0, 255),
-        Color::Yellow => (255, 255, 0),
-        Color::Red => (255, 0, 0),
-        Color::Blue => (0, 0, 255),
-        Color::White => (255, 255, 255),
-        _ => (128, 128, 128),
-    };
+    let (r, g, b) = color_to_rgb(accent);
 
     let faded = Color::Rgb(
         (r as f32 * opacity) as u8,
@@ -310,26 +300,26 @@ impl Mode for ClockMode {
 
         // Render date string
         let date_str = now.format("%A, %B %-d, %Y").to_string();
-        render::render_centered_text(frame, chunks[3], &date_str, Color::DarkGray);
+        render::render_centered_text(frame, chunks[3], &date_str, ctx.dim_color());
 
         // Render sunrise/sunset info if available
         if let Some((ref sunrise, ref sunset)) = ctx.sunrise_sunset {
             let sun_str = format!("Sunrise {}  Sunset {}", sunrise, sunset);
-            render::render_centered_text(frame, chunks[4], &sun_str, Color::DarkGray);
+            render::render_centered_text(frame, chunks[4], &sun_str, ctx.dim_color());
         }
 
         // Render format info line
         match self.display_format {
             ClockDisplayFormat::HumanReadable => {}
             ClockDisplayFormat::UnixTimestamp => {
-                render::render_centered_text(frame, chunks[5], "Unix Timestamp", Color::DarkGray);
+                render::render_centered_text(frame, chunks[5], "Unix Timestamp", ctx.dim_color());
             }
             ClockDisplayFormat::Iso8601 => {
                 let iso = now.format("%Y-%m-%dT%H:%M:%S%:z").to_string();
-                render::render_centered_text(frame, chunks[5], &iso, Color::Gray);
+                render::render_centered_text(frame, chunks[5], &iso, ctx.muted_color());
             }
             ClockDisplayFormat::HexTime => {
-                render::render_centered_text(frame, chunks[5], "Hex Time", Color::DarkGray);
+                render::render_centered_text(frame, chunks[5], "Hex Time", ctx.dim_color());
             }
         }
 
@@ -368,7 +358,7 @@ impl Mode for ClockMode {
             let start_x = info_area.x + (info_area.width.saturating_sub(total_width)) / 2;
             let max_x = info_area.x + info_area.width;
             let y = info_area.y;
-            let dim = Color::Rgb(100, 100, 100);
+            let dim = ctx.dim_color();
 
             let buf = frame.buffer_mut();
             let after_day = render_mini_bar(
@@ -402,7 +392,7 @@ impl Mode for ClockMode {
             .map(|(k, v)| format!("[{k}] {v}"))
             .collect::<Vec<_>>()
             .join("  ");
-        render::render_centered_text(frame, chunks[8], &hint_str, Color::DarkGray);
+        render::render_centered_text(frame, chunks[8], &hint_str, ctx.dim_color());
     }
 
     fn handle_key(&mut self, key: KeyEvent, ctx: &mut RenderContext) -> bool {

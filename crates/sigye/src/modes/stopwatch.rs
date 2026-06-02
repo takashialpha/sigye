@@ -130,7 +130,7 @@ impl Mode for StopwatchMode {
         // Centiseconds below (dimmed)
         let centis = (elapsed % 1000) / 10;
         let centis_str = format!(".{:02}", centis);
-        render::render_centered_text(frame, chunks[2], &centis_str, Color::DarkGray);
+        render::render_centered_text(frame, chunks[2], &centis_str, ctx.dim_color());
 
         // Status
         let (status_text, status_color) = if self.running {
@@ -138,7 +138,7 @@ impl Mode for StopwatchMode {
         } else if elapsed > 0 {
             ("PAUSED", Color::Yellow)
         } else {
-            ("STOPPED", Color::DarkGray)
+            ("STOPPED", ctx.dim_color())
         };
         render::render_centered_text(frame, chunks[3], status_text, status_color);
 
@@ -176,7 +176,7 @@ impl Mode for StopwatchMode {
                     width: lap_area.width,
                     height: 1,
                 };
-                render::render_centered_text(frame, row_area, &lap_str, Color::DarkGray);
+                render::render_centered_text(frame, row_area, &lap_str, ctx.dim_color());
             }
         }
 
@@ -187,7 +187,7 @@ impl Mode for StopwatchMode {
             .map(|(k, v)| format!("[{k}] {v}"))
             .collect::<Vec<_>>()
             .join("  ");
-        render::render_centered_text(frame, chunks[6], &hint_str, Color::DarkGray);
+        render::render_centered_text(frame, chunks[6], &hint_str, ctx.dim_color());
     }
 
     fn handle_key(&mut self, key: KeyEvent, _ctx: &mut RenderContext) -> bool {
