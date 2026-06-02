@@ -645,12 +645,12 @@ impl ColorTheme {
 
     /// Get a dimmed version of the current theme color for secondary text.
     pub fn secondary_color(self) -> Color {
-        blend_toward_gray(self.color(), 110, 0.55)
+        ensure_min_contrast_on_black(blend_toward_gray(self.color(), 110, 0.55), 3.0)
     }
 
     /// Get a brighter dimmed version of the current theme color for muted text.
     pub fn muted_color(self) -> Color {
-        blend_toward_gray(self.color(), 150, 0.50)
+        ensure_min_contrast_on_black(blend_toward_gray(self.color(), 150, 0.50), 4.5)
     }
 
     /// Check if this theme requires per-character coloring.
@@ -1047,6 +1047,52 @@ pub fn blend_toward_gray(color: Color, baseline: u8, tint: f32) -> Color {
     Color::Rgb(mix(r), mix(g), mix(b))
 }
 
+/// Convert one 8-bit sRGB channel to linear light.
+fn srgb_channel_to_linear(channel: u8) -> f32 {
+    let channel = channel as f32 / 255.0;
+    if channel <= 0.03928 {
+        channel / 12.92
+    } else {
+        ((channel + 0.055) / 1.055).powf(2.4)
+    }
+}
+
+/// WCAG relative luminance of a color.
+pub fn relative_luminance(color: Color) -> f32 {
+    let (r, g, b) = color_to_rgb(color);
+    0.2126 * srgb_channel_to_linear(r)
+        + 0.7152 * srgb_channel_to_linear(g)
+        + 0.0722 * srgb_channel_to_linear(b)
+}
+
+/// WCAG contrast ratio of a color against pure black.
+pub fn contrast_ratio_on_black(color: Color) -> f32 {
+    (relative_luminance(color) + 0.05) / 0.05
+}
+
+/// Lighten a color toward white until it meets a minimum contrast ratio on black.
+pub fn ensure_min_contrast_on_black(color: Color, min_ratio: f32) -> Color {
+    let (r, g, b) = color_to_rgb(color);
+    let color = Color::Rgb(r, g, b);
+    if contrast_ratio_on_black(color) >= min_ratio {
+        return color;
+    }
+
+    let lerp = |channel: u8, t: f32| (channel as f32 + (255.0 - channel as f32) * t).round() as u8;
+    let (mut lo, mut hi) = (0.0_f32, 1.0_f32);
+    for _ in 0..16 {
+        let mid = (lo + hi) / 2.0;
+        let candidate = Color::Rgb(lerp(r, mid), lerp(g, mid), lerp(b, mid));
+        if contrast_ratio_on_black(candidate) >= min_ratio {
+            hi = mid;
+        } else {
+            lo = mid;
+        }
+    }
+
+    Color::Rgb(lerp(r, hi), lerp(g, hi), lerp(b, hi))
+}
+
 /// Convert RGB to HSL.
 fn rgb_to_hsl(r: u8, g: u8, b: u8) -> (f32, f32, f32) {
     let r = r as f32 / 255.0;
@@ -1153,11 +1199,6 @@ mod tests {
         ColorTheme::GradientSakura,
     ];
 
-    fn luminance(color: Color) -> f32 {
-        let (r, g, b) = color_to_rgb(color);
-        0.299 * r as f32 + 0.587 * g as f32 + 0.114 * b as f32
-    }
-
     #[test]
     fn color_to_rgb_maps_named_colors_used_by_app() {
         let cases = [
@@ -1218,25 +1259,38 @@ mod tests {
     }
 
     #[test]
-    fn color_theme_provides_contrast_aware_secondary_and_muted_colors() {
-        assert_eq!(ColorTheme::Cyan.secondary_color(), Color::Rgb(50, 190, 190));
-        assert_eq!(ColorTheme::Cyan.muted_color(), Color::Rgb(75, 203, 203));
+    fn ensure_min_contrast_keeps_bright_colors_and_lightens_dark_colors() {
+        assert_eq!(
+            ensure_min_contrast_on_black(Color::White, 4.5),
+            Color::Rgb(255, 255, 255)
+        );
+
+        let dark = Color::Rgb(0, 0, 60);
+        let adjusted = ensure_min_contrast_on_black(dark, 4.5);
+
+        assert!(contrast_ratio_on_black(adjusted) >= 4.5);
+        assert_ne!(adjusted, dark);
     }
 
     #[test]
-    fn secondary_and_muted_colors_stay_readable_for_every_theme() {
+    fn secondary_and_muted_colors_meet_wcag_contrast_floor_for_every_theme() {
         for theme in TEST_THEMES {
-            let secondary_luminance = luminance(theme.secondary_color());
-            let muted_luminance = luminance(theme.muted_color());
+            let secondary_contrast = contrast_ratio_on_black(theme.secondary_color());
+            let muted_contrast = contrast_ratio_on_black(theme.muted_color());
 
             assert!(
-                secondary_luminance >= 50.0,
-                "{} secondary luminance {secondary_luminance}",
+                secondary_contrast >= 3.0,
+                "{} secondary contrast {secondary_contrast}",
                 theme.display_name()
             );
             assert!(
-                muted_luminance >= secondary_luminance,
-                "{} muted luminance {muted_luminance} < secondary {secondary_luminance}",
+                muted_contrast >= 4.5,
+                "{} muted contrast {muted_contrast}",
+                theme.display_name()
+            );
+            assert!(
+                muted_contrast >= secondary_contrast,
+                "{} muted contrast {muted_contrast} < secondary {secondary_contrast}",
                 theme.display_name()
             );
         }
