@@ -29,48 +29,6 @@ pub enum SettingsField {
     TimerDuration,
 }
 
-impl SettingsField {
-    /// Move to the next field.
-    pub fn next(self) -> Self {
-        match self {
-            Self::Font => Self::Color,
-            Self::Color => Self::TimeFormat,
-            Self::TimeFormat => Self::ShowSeconds,
-            Self::ShowSeconds => Self::Animation,
-            Self::Animation => Self::Speed,
-            Self::Speed => Self::Background,
-            Self::Background => Self::ColonBlink,
-            Self::ColonBlink => Self::PomodoroWork,
-            Self::PomodoroWork => Self::PomodoroBreak,
-            Self::PomodoroBreak => Self::PomodoroLongBreak,
-            Self::PomodoroLongBreak => Self::PomodoroSound,
-            Self::PomodoroSound => Self::DesktopNotifications,
-            Self::DesktopNotifications => Self::TimerDuration,
-            Self::TimerDuration => Self::Font,
-        }
-    }
-
-    /// Move to the previous field.
-    pub fn prev(self) -> Self {
-        match self {
-            Self::Font => Self::TimerDuration,
-            Self::TimerDuration => Self::DesktopNotifications,
-            Self::DesktopNotifications => Self::PomodoroSound,
-            Self::PomodoroSound => Self::PomodoroLongBreak,
-            Self::Color => Self::Font,
-            Self::TimeFormat => Self::Color,
-            Self::ShowSeconds => Self::TimeFormat,
-            Self::Animation => Self::ShowSeconds,
-            Self::Speed => Self::Animation,
-            Self::Background => Self::Speed,
-            Self::ColonBlink => Self::Background,
-            Self::PomodoroWork => Self::ColonBlink,
-            Self::PomodoroBreak => Self::PomodoroWork,
-            Self::PomodoroLongBreak => Self::PomodoroBreak,
-        }
-    }
-}
-
 /// A row in the settings dialog layout.
 enum RowKind {
     Header(&'static str),
@@ -330,14 +288,35 @@ impl SettingsDialog {
         self.original_timer_duration_mins
     }
 
+    /// Get settings fields in their visible section layout order.
+    fn field_order() -> Vec<SettingsField> {
+        Self::section_layout()
+            .into_iter()
+            .filter_map(|row| match row {
+                RowKind::Field(field) => Some(field),
+                RowKind::Header(_) | RowKind::Spacer => None,
+            })
+            .collect()
+    }
+
     /// Move to next field and ensure it's visible.
     pub fn next_field(&mut self) {
-        self.selected_field = self.selected_field.next();
+        let fields = Self::field_order();
+        let idx = fields
+            .iter()
+            .position(|field| *field == self.selected_field)
+            .unwrap_or(0);
+        self.selected_field = fields[(idx + 1) % fields.len()];
     }
 
     /// Move to previous field and ensure it's visible.
     pub fn prev_field(&mut self) {
-        self.selected_field = self.selected_field.prev();
+        let fields = Self::field_order();
+        let idx = fields
+            .iter()
+            .position(|field| *field == self.selected_field)
+            .unwrap_or(0);
+        self.selected_field = fields[(idx + fields.len() - 1) % fields.len()];
     }
 
     /// Get the section layout: ordered list of rows (headers, fields, spacers).
@@ -907,5 +886,96 @@ mod tests {
                 .cell((x + offset as u16, y))
                 .is_some_and(|cell| cell.symbol() == ch.to_string())
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn dialog_at(field: SettingsField) -> SettingsDialog {
+        let mut dialog = SettingsDialog::new(vec![String::from("Standard")]);
+        dialog.selected_field = field;
+        dialog
+    }
+
+    #[test]
+    fn down_navigation_follows_visible_settings_rows() {
+        let mut dialog = SettingsDialog::new(vec![String::from("Standard")]);
+
+        let mut visited = vec![dialog.selected_field];
+        for _ in 0..13 {
+            dialog.next_field();
+            visited.push(dialog.selected_field);
+        }
+
+        assert_eq!(
+            visited,
+            vec![
+                SettingsField::Font,
+                SettingsField::Color,
+                SettingsField::TimeFormat,
+                SettingsField::ShowSeconds,
+                SettingsField::ColonBlink,
+                SettingsField::Animation,
+                SettingsField::Speed,
+                SettingsField::Background,
+                SettingsField::PomodoroWork,
+                SettingsField::PomodoroBreak,
+                SettingsField::PomodoroLongBreak,
+                SettingsField::PomodoroSound,
+                SettingsField::DesktopNotifications,
+                SettingsField::TimerDuration,
+            ]
+        );
+    }
+
+    #[test]
+    fn down_navigation_wraps_from_last_visible_row_to_first() {
+        let mut dialog = dialog_at(SettingsField::TimerDuration);
+
+        dialog.next_field();
+
+        assert_eq!(dialog.selected_field, SettingsField::Font);
+    }
+
+    #[test]
+    fn up_navigation_follows_reverse_visible_settings_rows() {
+        let mut dialog = dialog_at(SettingsField::TimerDuration);
+
+        let mut visited = vec![dialog.selected_field];
+        for _ in 0..13 {
+            dialog.prev_field();
+            visited.push(dialog.selected_field);
+        }
+
+        assert_eq!(
+            visited,
+            vec![
+                SettingsField::TimerDuration,
+                SettingsField::DesktopNotifications,
+                SettingsField::PomodoroSound,
+                SettingsField::PomodoroLongBreak,
+                SettingsField::PomodoroBreak,
+                SettingsField::PomodoroWork,
+                SettingsField::Background,
+                SettingsField::Speed,
+                SettingsField::Animation,
+                SettingsField::ColonBlink,
+                SettingsField::ShowSeconds,
+                SettingsField::TimeFormat,
+                SettingsField::Color,
+                SettingsField::Font,
+            ]
+        );
+    }
+
+    #[test]
+    fn up_navigation_wraps_from_first_visible_row_to_last() {
+        let mut dialog = dialog_at(SettingsField::Font);
+
+        dialog.prev_field();
+
+        assert_eq!(dialog.selected_field, SettingsField::TimerDuration);
     }
 }
