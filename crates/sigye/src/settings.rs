@@ -887,12 +887,6 @@ mod tests {
                 .is_some_and(|cell| cell.symbol() == ch.to_string())
         })
     }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
     fn dialog_at(field: SettingsField) -> SettingsDialog {
         let mut dialog = SettingsDialog::new(vec![String::from("Standard")]);
         dialog.selected_field = field;
