@@ -12,19 +12,19 @@ homepage = "https://github.com/am2rican5/sigye"
 readme = "README.md"
 
 [workspace.dependencies]
-ratatui = "0.30.0"
+ratatui = { version = "0.30.0", default-features = false, features = ["crossterm"] }
 crossterm = "0.29"
 chrono = "0.4"
 color-eyre = "0.6"
 serde = { version = "1.0", features = ["derive"] }
 toml = "1.0"
 directories = "6.0"
-sysinfo = "0.38"
+sysinfo = { version = "0.38", default-features = false, features = ["network", "system"] }
 ureq = { version = "3.3", features = ["json"] }
 serde_json = "1.0"
 notify-rust = "4"
 chrono-tz = "0.10"
-arboard = "3"
+arboard = { version = "3", default-features = false }
 sigye-core = { version = "0.4.4", path = "crates/sigye-core" }
 sigye-fonts = { version = "0.4.4", path = "crates/sigye-fonts" }
 sigye-config = { version = "0.4.4", path = "crates/sigye-config" }
@@ -33,5 +33,6 @@ sigye-background = { version = "0.4.4", path = "crates/sigye-background" }
 [profile.release]
 codegen-units = 1
 lto = true
-opt-level = "s"
+opt-level = "z"
 strip = true
+panic = "abort"
