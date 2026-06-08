@@ -177,14 +177,7 @@ impl Mode for TimerMode {
         let bar_widget = Paragraph::new(bar).alignment(Alignment::Center);
         frame.render_widget(bar_widget, chunks[3]);
 
-        // Key hints
-        let hints = self.key_hints();
-        let hint_str: String = hints
-            .iter()
-            .map(|(k, v)| format!("[{k}] {v}"))
-            .collect::<Vec<_>>()
-            .join("  ");
-        render::render_centered_text(frame, chunks[5], &hint_str, ctx.dim_color());
+        render::render_key_hints(frame, chunks[5], ctx, &self.key_hints());
     }
 
     fn handle_key(&mut self, key: KeyEvent, ctx: &mut RenderContext) -> bool {

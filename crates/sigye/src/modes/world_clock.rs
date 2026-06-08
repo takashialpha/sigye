@@ -136,15 +136,8 @@ impl Mode for WorldClockMode {
             render::render_ascii_text(frame, entry_chunks[1], font, &time_str, &params);
         }
 
-        // Key hints (last chunk)
         let hints_area = chunks[chunks.len() - 1];
-        let hints = self.key_hints();
-        let hint_str: String = hints
-            .iter()
-            .map(|(k, v)| format!("[{k}] {v}"))
-            .collect::<Vec<_>>()
-            .join("  ");
-        render::render_centered_text(frame, hints_area, &hint_str, ctx.dim_color());
+        render::render_key_hints(frame, hints_area, ctx, &self.key_hints());
     }
 
     fn handle_key(&mut self, _key: KeyEvent, _ctx: &mut RenderContext) -> bool {

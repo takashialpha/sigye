@@ -290,13 +290,7 @@ impl CountdownMode {
         ]);
         frame.render_widget(Paragraph::new(cta).alignment(Alignment::Center), chunks[11]);
 
-        let hints = self.key_hints();
-        let hint_str: String = hints
-            .iter()
-            .map(|(k, v)| format!("[{k}] {v}"))
-            .collect::<Vec<_>>()
-            .join("  ");
-        render::render_centered_text(frame, chunks[13], &hint_str, dim);
+        render::render_key_hints(frame, chunks[13], ctx, &self.key_hints());
     }
 }
 
@@ -363,13 +357,7 @@ impl Mode for CountdownMode {
             render::render_centered_text(frame, chunks[6], &pager, ctx.dim_color());
         }
 
-        let hints = self.key_hints();
-        let hint_str: String = hints
-            .iter()
-            .map(|(k, v)| format!("[{k}] {v}"))
-            .collect::<Vec<_>>()
-            .join("  ");
-        render::render_centered_text(frame, chunks[7], &hint_str, ctx.dim_color());
+        render::render_key_hints(frame, chunks[7], ctx, &self.key_hints());
     }
 
     fn handle_key(&mut self, key: KeyEvent, ctx: &mut RenderContext) -> bool {
@@ -411,7 +399,47 @@ impl Mode for CountdownMode {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Instant;
+
+    use ratatui::{Terminal, backend::TestBackend};
+    use sigye_config::Config;
+    use sigye_fonts::FontRegistry;
+
     use super::*;
+
+    fn render_context(screensaver_mode: bool) -> RenderContext {
+        let config = Config::default();
+        RenderContext {
+            time_format: config.time_format,
+            color_theme: config.color_theme,
+            animation_style: config.animation_style,
+            animation_speed: config.animation_speed,
+            colon_blink: config.colon_blink,
+            show_seconds: config.show_seconds,
+            background_style: config.background_style,
+            current_font: config.font_name.clone(),
+            font_registry: FontRegistry::new(),
+            on_complete_command: config.on_complete.clone(),
+            config,
+            animation_start: Instant::now(),
+            flash_intensity: 0.0,
+            flash_start: None,
+            screensaver_mode,
+            desktop_notifications: false,
+            sunrise_sunset: None,
+        }
+    }
+
+    #[test]
+    fn onboarding_hides_settings_hint_in_screensaver_mode() {
+        let mut terminal = Terminal::new(TestBackend::new(100, 35)).unwrap();
+        let mode = CountdownMode::new();
+        let ctx = render_context(true);
+
+        terminal.draw(|frame| mode.render(frame, &ctx)).unwrap();
+
+        assert!(!buffer_contains_text(terminal.backend(), "[s] settings"));
+    }
 
     #[test]
     fn parses_iso_date() {
@@ -481,5 +509,27 @@ mod tests {
         let view = compute_event_view(&ev);
         assert_eq!(view.big_text, "TODAY");
         assert_eq!(view.status, "Birthday");
+    }
+
+    fn buffer_contains_text(backend: &TestBackend, text: &str) -> bool {
+        let buffer = backend.buffer();
+        let area = buffer.area;
+        for y in area.top()..area.bottom() {
+            for x in area.left()..area.right() {
+                if text_matches_at(backend, x, y, text) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    fn text_matches_at(backend: &TestBackend, x: u16, y: u16, text: &str) -> bool {
+        let buffer = backend.buffer();
+        text.chars().enumerate().all(|(offset, ch)| {
+            buffer
+                .cell((x + offset as u16, y))
+                .is_some_and(|cell| cell.symbol() == ch.to_string())
+        })
     }
 }

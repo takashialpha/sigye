@@ -9,6 +9,8 @@ use ratatui::{
 use sigye_core::{AnimationSpeed, AnimationStyle, ColorTheme, apply_animation, is_colon_visible};
 use sigye_fonts::Font;
 
+use crate::context::RenderContext;
+
 /// Parameters for rendering ASCII art text to the frame buffer.
 pub struct AsciiTextParams {
     pub color_theme: ColorTheme,
@@ -149,4 +151,23 @@ pub fn render_progress_bar(progress: f64, width: u16, accent: Color) -> Line<'st
         Span::styled(filled_str, Style::default().fg(accent)),
         Span::styled(empty_str, Style::default().dark_gray()),
     ])
+}
+
+/// Render mode key hints unless screensaver mode is hiding UI chrome.
+pub fn render_key_hints(
+    frame: &mut Frame,
+    area: Rect,
+    ctx: &RenderContext,
+    hints: &[(&str, &str)],
+) {
+    if ctx.screensaver_mode {
+        return;
+    }
+
+    let hint_str = hints
+        .iter()
+        .map(|(key, value)| format!("[{key}] {value}"))
+        .collect::<Vec<_>>()
+        .join("  ");
+    render_centered_text(frame, area, &hint_str, ctx.dim_color());
 }
