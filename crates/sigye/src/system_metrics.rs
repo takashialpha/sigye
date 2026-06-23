@@ -8,13 +8,10 @@ use sigye_core::SystemMetrics;
 use sysinfo::{Networks, System};
 
 /// Shared state for tracking max observed values (for normalization).
-#[allow(dead_code)]
 #[derive(Debug, Default)]
 struct MaxValues {
     network_rx: u64,
     network_tx: u64,
-    disk_read: u64,
-    disk_write: u64,
 }
 
 /// System monitor that polls resource usage in a background thread.
@@ -22,8 +19,6 @@ struct MaxValues {
 pub struct SystemMonitor {
     /// Shared metrics updated by the background thread.
     metrics: Arc<RwLock<SystemMetrics>>,
-    /// Cached metrics for when lock is contended.
-    cached_metrics: Arc<RwLock<SystemMetrics>>,
     /// Flag to signal thread termination.
     running: Arc<RwLock<bool>>,
 }
@@ -33,7 +28,6 @@ impl SystemMonitor {
     pub fn new() -> Self {
         Self {
             metrics: Arc::new(RwLock::new(SystemMetrics::default())),
-            cached_metrics: Arc::new(RwLock::new(SystemMetrics::default())),
             running: Arc::new(RwLock::new(false)),
         }
     }
@@ -49,7 +43,6 @@ impl SystemMonitor {
         }
 
         let metrics = self.metrics.clone();
-        let cached = self.cached_metrics.clone();
         let running = self.running.clone();
 
         thread::spawn(move || {
@@ -121,34 +114,17 @@ impl SystemMonitor {
                 prev_tx = current_tx;
                 prev_time = now;
 
-                // Disk I/O - use process-level stats as approximation
-                // sysinfo doesn't provide system-wide disk I/O rates easily
-                // We'll use a simplified approach based on available data
-                let disk_read_rate = 0.0; // Placeholder - could be enhanced
-                let disk_write_rate = 0.0; // Placeholder - could be enhanced
-
-                // Battery info (macOS/Linux support varies)
-                let (battery_level, battery_charging) = get_battery_info();
-
                 // Update metrics
                 let new_metrics = SystemMetrics {
                     cpu_usage: cpu_usage.clamp(0.0, 1.0),
                     memory_usage: memory_usage.clamp(0.0, 1.0),
                     network_rx_rate: network_rx_rate.clamp(0.0, 1.0),
                     network_tx_rate: network_tx_rate.clamp(0.0, 1.0),
-                    disk_read_rate,
-                    disk_write_rate,
-                    battery_level,
-                    battery_charging,
                 };
 
                 // Update shared metrics
                 if let Ok(mut m) = metrics.write() {
-                    *m = new_metrics.clone();
-                }
-                // Also update cache
-                if let Ok(mut c) = cached.write() {
-                    *c = new_metrics;
+                    *m = new_metrics;
                 }
 
                 thread::sleep(Duration::from_secs(1));
@@ -164,17 +140,16 @@ impl SystemMonitor {
     }
 
     /// Get the current system metrics.
-    /// Uses try_read with fallback to cached values to avoid blocking.
+    /// Non-blocking when possible; the writer holds the lock only briefly, so
+    /// block rather than fabricate zeros if it is momentarily contended.
     pub fn get_metrics(&self) -> SystemMetrics {
-        // Try non-blocking read first
         if let Ok(m) = self.metrics.try_read() {
             return m.clone();
         }
-        // Fall back to cached metrics
-        if let Ok(c) = self.cached_metrics.read() {
-            return c.clone();
+        if let Ok(m) = self.metrics.read() {
+            return m.clone();
         }
-        // Last resort: return defaults
+        // Lock poisoned: last resort.
         SystemMetrics::default()
     }
 }
@@ -191,15 +166,6 @@ impl Drop for SystemMonitor {
     }
 }
 
-/// Get battery information from the system.
-/// Returns (level, is_charging) or (None, None) if no battery.
-fn get_battery_info() -> (Option<f32>, Option<bool>) {
-    // sysinfo doesn't provide battery info directly
-    // On macOS, we could use IOKit, but for simplicity we'll return None
-    // This could be enhanced with platform-specific code or the `battery` crate
-    (None, None)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -209,7 +175,6 @@ mod tests {
         let metrics = SystemMetrics::default();
         assert_eq!(metrics.cpu_usage, 0.0);
         assert_eq!(metrics.memory_usage, 0.0);
-        assert!(metrics.battery_level.is_none());
     }
 
     #[test]

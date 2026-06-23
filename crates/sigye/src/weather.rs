@@ -31,8 +31,6 @@ pub enum WeatherCondition {
     Snow,
     Fog,
     Windy,
-    #[allow(dead_code)]
-    VeryCold,
 }
 
 /// Parsed weather data from wttr.in API.
@@ -42,9 +40,6 @@ pub struct WeatherData {
     pub condition: WeatherCondition,
     /// Temperature in Celsius.
     pub temp_c: i32,
-    /// Wind speed in km/h (used during fetch for condition override).
-    #[allow(dead_code)]
-    pub wind_kmph: u32,
     /// Time of day for weather-aware rendering.
     pub time_of_day: TimeOfDay,
     /// Latitude (for aurora calculation).
@@ -65,7 +60,6 @@ impl Default for WeatherData {
         Self {
             condition: WeatherCondition::Clear,
             temp_c: 20,
-            wind_kmph: 0,
             time_of_day: TimeOfDay::Day,
             latitude: 0.0,
             fetched_at: Instant::now(),
@@ -114,8 +108,6 @@ pub struct WeatherMonitor {
     weather_data: Arc<RwLock<Option<WeatherData>>>,
     /// Current resolved background style.
     resolved_background: Arc<RwLock<BackgroundStyle>>,
-    /// Cached background for when lock is contended.
-    cached_background: Arc<RwLock<BackgroundStyle>>,
     /// Location string (empty for auto-detect).
     location: String,
     /// Flag to signal thread termination.
@@ -132,7 +124,6 @@ impl WeatherMonitor {
         Self {
             weather_data: Arc::new(RwLock::new(None)),
             resolved_background: Arc::new(RwLock::new(BackgroundStyle::Starfield)),
-            cached_background: Arc::new(RwLock::new(BackgroundStyle::Starfield)),
             location,
             running: Arc::new(RwLock::new(false)),
             sunrise: Arc::new(RwLock::new(None)),
@@ -151,7 +142,6 @@ impl WeatherMonitor {
 
         let weather_data = self.weather_data.clone();
         let resolved_bg = self.resolved_background.clone();
-        let cached_bg = self.cached_background.clone();
         let location = self.location.clone();
         let running = self.running.clone();
         let sunrise = self.sunrise.clone();
@@ -159,14 +149,7 @@ impl WeatherMonitor {
 
         thread::spawn(move || {
             // Fetch immediately on start
-            fetch_and_update(
-                &location,
-                &weather_data,
-                &resolved_bg,
-                &cached_bg,
-                &sunrise,
-                &sunset,
-            );
+            fetch_and_update(&location, &weather_data, &resolved_bg, &sunrise, &sunset);
 
             let mut last_fetch = Instant::now();
 
@@ -180,14 +163,7 @@ impl WeatherMonitor {
 
                 // Fetch new data if interval elapsed
                 if last_fetch.elapsed() >= FETCH_INTERVAL {
-                    fetch_and_update(
-                        &location,
-                        &weather_data,
-                        &resolved_bg,
-                        &cached_bg,
-                        &sunrise,
-                        &sunset,
-                    );
+                    fetch_and_update(&location, &weather_data, &resolved_bg, &sunrise, &sunset);
                     last_fetch = Instant::now();
                 }
 
@@ -205,24 +181,17 @@ impl WeatherMonitor {
     }
 
     /// Get the currently resolved background style.
-    /// Uses try_read with fallback to cached values to avoid blocking.
+    /// Non-blocking when possible; the fetch thread holds the lock only briefly,
+    /// so block rather than flash the default if it is momentarily contended.
     pub fn get_background(&self) -> BackgroundStyle {
-        // Try non-blocking read first
         if let Ok(bg) = self.resolved_background.try_read() {
             return *bg;
         }
-        // Fall back to cached background
-        if let Ok(cached) = self.cached_background.read() {
-            return *cached;
+        if let Ok(bg) = self.resolved_background.read() {
+            return *bg;
         }
-        // Last resort: return default
+        // Lock poisoned: last resort.
         BackgroundStyle::Starfield
-    }
-
-    /// Get the current weather data (if available).
-    #[allow(dead_code)]
-    pub fn get_weather_data(&self) -> Option<WeatherData> {
-        self.weather_data.read().ok().and_then(|w| w.clone())
     }
 
     /// Get the sunrise and sunset times (if available).
@@ -230,16 +199,6 @@ impl WeatherMonitor {
         let sunrise = self.sunrise.read().ok()?.clone()?;
         let sunset = self.sunset.read().ok()?.clone()?;
         Some((sunrise, sunset))
-    }
-
-    /// Get the current time of day for weather-aware rendering.
-    #[allow(dead_code)]
-    pub fn get_time_of_day(&self) -> TimeOfDay {
-        self.weather_data
-            .read()
-            .ok()
-            .and_then(|w| w.as_ref().map(|d| d.time_of_day))
-            .unwrap_or(TimeOfDay::Day)
     }
 }
 
@@ -260,7 +219,6 @@ fn fetch_and_update(
     location: &str,
     weather_data: &Arc<RwLock<Option<WeatherData>>>,
     resolved_bg: &Arc<RwLock<BackgroundStyle>>,
-    cached_bg: &Arc<RwLock<BackgroundStyle>>,
     sunrise_lock: &Arc<RwLock<Option<String>>>,
     sunset_lock: &Arc<RwLock<Option<String>>>,
 ) {
@@ -273,9 +231,6 @@ fn fetch_and_update(
             }
             if let Ok(mut bg) = resolved_bg.write() {
                 *bg = background;
-            }
-            if let Ok(mut cb) = cached_bg.write() {
-                *cb = background;
             }
             if let Some(s) = sunrise_str
                 && let Ok(mut sr) = sunrise_lock.write()
@@ -295,13 +250,8 @@ fn fetch_and_update(
                 .map(|w| w.as_ref().map(|d| !d.is_fresh()).unwrap_or(true))
                 .unwrap_or(true);
 
-            if should_fallback {
-                if let Ok(mut bg) = resolved_bg.write() {
-                    *bg = BackgroundStyle::Starfield;
-                }
-                if let Ok(mut cb) = cached_bg.write() {
-                    *cb = BackgroundStyle::Starfield;
-                }
+            if should_fallback && let Ok(mut bg) = resolved_bg.write() {
+                *bg = BackgroundStyle::Starfield;
             }
         }
     }
@@ -380,7 +330,6 @@ fn parse_weather_response(response: WttrResponse) -> Result<WeatherData, String>
     Ok(WeatherData {
         condition,
         temp_c,
-        wind_kmph,
         time_of_day,
         latitude,
         fetched_at: Instant::now(),
@@ -533,7 +482,6 @@ fn map_weather_to_background(weather: &WeatherData) -> BackgroundStyle {
         WeatherCondition::Snow => BackgroundStyle::Snowfall,
         WeatherCondition::Fog => BackgroundStyle::Foggy,
         WeatherCondition::Windy => BackgroundStyle::Windy,
-        WeatherCondition::VeryCold => BackgroundStyle::Frost,
     }
 }
 

@@ -2,6 +2,7 @@
 
 mod context;
 mod countdown_dialog;
+mod dialog;
 mod mode;
 mod mode_dialog;
 mod modes;
@@ -16,10 +17,9 @@ use clap::Parser;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{
     DefaultTerminal, Frame,
-    layout::Alignment,
     style::{Color, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, Paragraph},
+    widgets::{Clear, Paragraph},
 };
 use sigye_config::Config;
 use sigye_core::{BackgroundStyle, ColorTheme, DisplayMode};
@@ -168,6 +168,9 @@ pub struct App {
 
 impl App {
     /// Construct a new instance of [`App`].
+    // A `Default` impl would only forward to `new()` and is never used; the entry point
+    // always builds via `new_with_cli`.
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         // Load configuration
         let config = Config::load();
@@ -675,21 +678,20 @@ impl App {
     fn cancel_settings(&mut self) {
         // Revert to original values
         self.ctx.current_font = self.settings_dialog.original_font().to_string();
-        self.ctx.color_theme = self.settings_dialog.original_color_theme();
-        self.ctx.time_format = self.settings_dialog.original_time_format();
-        self.ctx.animation_style = self.settings_dialog.original_animation_style();
-        self.ctx.animation_speed = self.settings_dialog.original_animation_speed();
-        self.ctx.colon_blink = self.settings_dialog.original_colon_blink();
-        self.ctx.show_seconds = self.settings_dialog.original_show_seconds();
-        self.ctx.background_style = self.settings_dialog.original_background_style();
-        self.ctx.config.pomodoro_work_mins = self.settings_dialog.original_pomodoro_work_mins();
-        self.ctx.config.pomodoro_break_mins = self.settings_dialog.original_pomodoro_break_mins();
-        self.ctx.config.pomodoro_long_break_mins =
-            self.settings_dialog.original_pomodoro_long_break_mins();
-        self.ctx.config.pomodoro_sound = self.settings_dialog.original_pomodoro_sound();
-        self.ctx.config.desktop_notifications =
-            self.settings_dialog.original_desktop_notifications();
-        let orig_timer_mins = self.settings_dialog.original_timer_duration_mins();
+        let original = *self.settings_dialog.original();
+        self.ctx.color_theme = original.color_theme;
+        self.ctx.time_format = original.time_format;
+        self.ctx.animation_style = original.animation_style;
+        self.ctx.animation_speed = original.animation_speed;
+        self.ctx.colon_blink = original.colon_blink;
+        self.ctx.show_seconds = original.show_seconds;
+        self.ctx.background_style = original.background_style;
+        self.ctx.config.pomodoro_work_mins = original.pomodoro_work_mins;
+        self.ctx.config.pomodoro_break_mins = original.pomodoro_break_mins;
+        self.ctx.config.pomodoro_long_break_mins = original.pomodoro_long_break_mins;
+        self.ctx.config.pomodoro_sound = original.pomodoro_sound;
+        self.ctx.config.desktop_notifications = original.desktop_notifications;
+        let orig_timer_mins = original.timer_duration_mins;
         self.ctx.config.timer_duration_mins = orig_timer_mins;
         // Sync timer mode via downcast
         for m in self.modes.iter_mut() {
@@ -743,9 +745,7 @@ impl App {
         let area = frame.area();
         let width = 56u16.min(area.width.saturating_sub(4));
         let height = 35u16.min(area.height.saturating_sub(2));
-        let x = (area.width.saturating_sub(width)) / 2;
-        let y = (area.height.saturating_sub(height)) / 2;
-        let overlay_area = ratatui::layout::Rect::new(x, y, width, height);
+        let overlay_area = dialog::centered_rect(area, width, height);
 
         frame.render_widget(Clear, overlay_area);
 
@@ -814,22 +814,9 @@ impl App {
             .centered(),
         ];
 
-        let help_widget = Paragraph::new(help_lines).block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(accent))
-                .title(" Help ")
-                .title_alignment(Alignment::Center)
-                .style(Style::default().fg(fg).bg(Color::Black)),
-        );
+        let help_widget = Paragraph::new(help_lines).block(dialog::dialog_block(" Help ", accent));
 
         frame.render_widget(help_widget, overlay_area);
-    }
-}
-
-impl Default for App {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

@@ -79,14 +79,7 @@ impl RenderContext {
 
     /// Run the on-complete shell command in a background thread.
     pub fn run_on_complete(&self) {
-        if let Some(ref cmd) = self.on_complete_command {
-            std::thread::spawn({
-                let cmd = cmd.clone();
-                move || {
-                    let _ = std::process::Command::new("sh").arg("-c").arg(&cmd).spawn();
-                }
-            });
-        }
+        self.run_command(&self.on_complete_command);
     }
 
     /// Run an arbitrary shell command in a background thread (for lifecycle hooks).

@@ -338,15 +338,7 @@ impl Mode for CountdownMode {
         ])
         .split(area);
 
-        let params = AsciiTextParams {
-            color_theme: ctx.color_theme,
-            static_color: ctx.color(),
-            animation_style: ctx.animation_style,
-            animation_speed: ctx.animation_speed,
-            elapsed_ms: ctx.elapsed_ms(),
-            flash_intensity: ctx.flash_intensity,
-            colon_blink: ctx.colon_blink,
-        };
+        let params = AsciiTextParams::from_ctx(ctx, ctx.color());
 
         render::render_ascii_text(frame, chunks[1], font, &view.big_text, &params);
         render::render_centered_text(frame, chunks[3], &view.status, ctx.color());

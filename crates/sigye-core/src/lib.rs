@@ -3,6 +3,16 @@
 use ratatui::style::Color;
 use serde::{Deserialize, Serialize};
 
+fn cycle_next<T: PartialEq + Copy>(all: &[T], cur: T) -> T {
+    let idx = all.iter().position(|x| x == &cur).unwrap_or(0);
+    all[(idx + 1) % all.len()]
+}
+
+fn cycle_prev<T: PartialEq + Copy>(all: &[T], cur: T) -> T {
+    let idx = all.iter().position(|x| x == &cur).unwrap_or(0);
+    all[if idx == 0 { all.len() - 1 } else { idx - 1 }]
+}
+
 /// Display mode for the application.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DisplayMode {
@@ -28,12 +38,7 @@ const ALL_DISPLAY_MODES: &[DisplayMode] = &[
 impl DisplayMode {
     /// Cycle to the next display mode.
     pub fn next(&self) -> Self {
-        let current_idx = ALL_DISPLAY_MODES
-            .iter()
-            .position(|m| m == self)
-            .unwrap_or(0);
-        let next_idx = (current_idx + 1) % ALL_DISPLAY_MODES.len();
-        ALL_DISPLAY_MODES[next_idx]
+        cycle_next(ALL_DISPLAY_MODES, *self)
     }
 
     /// Get display name for the mode.
@@ -68,11 +73,7 @@ const ALL_CLOCK_DISPLAY_FORMATS: &[ClockDisplayFormat] = &[
 
 impl ClockDisplayFormat {
     pub fn next(&self) -> Self {
-        let idx = ALL_CLOCK_DISPLAY_FORMATS
-            .iter()
-            .position(|f| f == self)
-            .unwrap_or(0);
-        ALL_CLOCK_DISPLAY_FORMATS[(idx + 1) % ALL_CLOCK_DISPLAY_FORMATS.len()]
+        cycle_next(ALL_CLOCK_DISPLAY_FORMATS, *self)
     }
 
     pub fn display_name(self) -> &'static str {
@@ -123,14 +124,6 @@ pub struct SystemMetrics {
     pub network_rx_rate: f32,
     /// Network transmit rate, normalized (0.0 - 1.0).
     pub network_tx_rate: f32,
-    /// Disk read rate, normalized (0.0 - 1.0).
-    pub disk_read_rate: f32,
-    /// Disk write rate, normalized (0.0 - 1.0).
-    pub disk_write_rate: f32,
-    /// Battery level (0.0 - 1.0), None if no battery.
-    pub battery_level: Option<f32>,
-    /// Whether battery is charging, None if no battery.
-    pub battery_charging: Option<bool>,
 }
 
 /// Time of day for weather-aware rendering.
@@ -186,26 +179,12 @@ const ALL_ANIMATION_STYLES: &[AnimationStyle] = &[
 impl AnimationStyle {
     /// Cycle to the next animation style.
     pub fn next(&self) -> Self {
-        let current_idx = ALL_ANIMATION_STYLES
-            .iter()
-            .position(|s| s == self)
-            .unwrap_or(0);
-        let next_idx = (current_idx + 1) % ALL_ANIMATION_STYLES.len();
-        ALL_ANIMATION_STYLES[next_idx]
+        cycle_next(ALL_ANIMATION_STYLES, *self)
     }
 
     /// Cycle to the previous animation style.
     pub fn prev(&self) -> Self {
-        let current_idx = ALL_ANIMATION_STYLES
-            .iter()
-            .position(|s| s == self)
-            .unwrap_or(0);
-        let prev_idx = if current_idx == 0 {
-            ALL_ANIMATION_STYLES.len() - 1
-        } else {
-            current_idx - 1
-        };
-        ALL_ANIMATION_STYLES[prev_idx]
+        cycle_prev(ALL_ANIMATION_STYLES, *self)
     }
 
     /// Get display name for the animation style.
@@ -281,26 +260,12 @@ const ALL_BACKGROUND_STYLES: &[BackgroundStyle] = &[
 impl BackgroundStyle {
     /// Cycle to the next background style.
     pub fn next(&self) -> Self {
-        let current_idx = ALL_BACKGROUND_STYLES
-            .iter()
-            .position(|s| s == self)
-            .unwrap_or(0);
-        let next_idx = (current_idx + 1) % ALL_BACKGROUND_STYLES.len();
-        ALL_BACKGROUND_STYLES[next_idx]
+        cycle_next(ALL_BACKGROUND_STYLES, *self)
     }
 
     /// Cycle to the previous background style.
     pub fn prev(&self) -> Self {
-        let current_idx = ALL_BACKGROUND_STYLES
-            .iter()
-            .position(|s| s == self)
-            .unwrap_or(0);
-        let prev_idx = if current_idx == 0 {
-            ALL_BACKGROUND_STYLES.len() - 1
-        } else {
-            current_idx - 1
-        };
-        ALL_BACKGROUND_STYLES[prev_idx]
+        cycle_prev(ALL_BACKGROUND_STYLES, *self)
     }
 
     /// Get display name for the background style.
@@ -366,26 +331,12 @@ const ALL_ANIMATION_SPEEDS: &[AnimationSpeed] = &[
 impl AnimationSpeed {
     /// Cycle to the next speed.
     pub fn next(&self) -> Self {
-        let current_idx = ALL_ANIMATION_SPEEDS
-            .iter()
-            .position(|s| s == self)
-            .unwrap_or(0);
-        let next_idx = (current_idx + 1) % ALL_ANIMATION_SPEEDS.len();
-        ALL_ANIMATION_SPEEDS[next_idx]
+        cycle_next(ALL_ANIMATION_SPEEDS, *self)
     }
 
     /// Cycle to the previous speed.
     pub fn prev(&self) -> Self {
-        let current_idx = ALL_ANIMATION_SPEEDS
-            .iter()
-            .position(|s| s == self)
-            .unwrap_or(0);
-        let prev_idx = if current_idx == 0 {
-            ALL_ANIMATION_SPEEDS.len() - 1
-        } else {
-            current_idx - 1
-        };
-        ALL_ANIMATION_SPEEDS[prev_idx]
+        cycle_prev(ALL_ANIMATION_SPEEDS, *self)
     }
 
     /// Get display name for the speed.
@@ -605,20 +556,12 @@ const ALL_THEMES: &[ColorTheme] = &[
 impl ColorTheme {
     /// Cycle to the next color theme.
     pub fn next(&self) -> Self {
-        let current_idx = ALL_THEMES.iter().position(|t| t == self).unwrap_or(0);
-        let next_idx = (current_idx + 1) % ALL_THEMES.len();
-        ALL_THEMES[next_idx]
+        cycle_next(ALL_THEMES, *self)
     }
 
     /// Cycle to the previous color theme.
     pub fn prev(&self) -> Self {
-        let current_idx = ALL_THEMES.iter().position(|t| t == self).unwrap_or(0);
-        let prev_idx = if current_idx == 0 {
-            ALL_THEMES.len() - 1
-        } else {
-            current_idx - 1
-        };
-        ALL_THEMES[prev_idx]
+        cycle_prev(ALL_THEMES, *self)
     }
 
     /// Convert theme to Ratatui Color (for static themes).

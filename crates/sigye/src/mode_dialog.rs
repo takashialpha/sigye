@@ -6,9 +6,11 @@ use ratatui::{
     layout::{Alignment, Constraint, Layout, Rect},
     style::{Color, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, Paragraph},
+    widgets::{Clear, Paragraph},
 };
 use sigye_core::DisplayMode;
+
+use crate::dialog::{centered_rect, dialog_block};
 
 /// All modes shown in the picker, in display order.
 const MODES: &[DisplayMode] = &[
@@ -109,18 +111,11 @@ impl ModeDialog {
         // border(2) + padding(2) + entries + help(1) + spacer(1)
         let dialog_height = (MODES.len() as u16 + 6).min(area.height.saturating_sub(2));
 
-        let dialog_x = area.x + (area.width.saturating_sub(dialog_width)) / 2;
-        let dialog_y = area.y + (area.height.saturating_sub(dialog_height)) / 2;
-        let dialog_area = Rect::new(dialog_x, dialog_y, dialog_width, dialog_height);
+        let dialog_area = centered_rect(area, dialog_width, dialog_height);
 
         frame.render_widget(Clear, dialog_area);
 
-        let block = Block::default()
-            .title(" Mode ")
-            .title_alignment(Alignment::Center)
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(accent))
-            .style(Style::default().fg(Color::White).bg(Color::Black));
+        let block = dialog_block(" Mode ", accent);
         let inner = block.inner(dialog_area);
         frame.render_widget(block, dialog_area);
 
@@ -181,6 +176,7 @@ impl ModeDialog {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dialog::test_helpers::color_of_text;
     use crossterm::event::{KeyEventKind, KeyEventState, KeyModifiers};
     use ratatui::{Terminal, backend::TestBackend};
 
@@ -257,27 +253,5 @@ mod tests {
             .unwrap();
 
         assert_eq!(color_of_text(terminal.backend(), " nav  "), Some(muted));
-    }
-
-    fn color_of_text(backend: &TestBackend, text: &str) -> Option<Color> {
-        let buffer = backend.buffer();
-        let area = buffer.area;
-        for y in area.top()..area.bottom() {
-            for x in area.left()..area.right() {
-                if text_matches_at(backend, x, y, text) {
-                    return buffer.cell((x, y)).map(|cell| cell.fg);
-                }
-            }
-        }
-        None
-    }
-
-    fn text_matches_at(backend: &TestBackend, x: u16, y: u16, text: &str) -> bool {
-        let buffer = backend.buffer();
-        text.chars().enumerate().all(|(offset, ch)| {
-            buffer
-                .cell((x + offset as u16, y))
-                .is_some_and(|cell| cell.symbol() == ch.to_string())
-        })
     }
 }

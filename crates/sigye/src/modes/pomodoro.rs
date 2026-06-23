@@ -175,15 +175,7 @@ impl Mode for PomodoroMode {
         let seconds = self.remaining_secs % 60;
         let time_str = format!("{:02}:{:02}", minutes, seconds);
 
-        let params = AsciiTextParams {
-            color_theme: ctx.color_theme,
-            static_color: ctx.color(),
-            animation_style: ctx.animation_style,
-            animation_speed: ctx.animation_speed,
-            elapsed_ms: ctx.elapsed_ms(),
-            flash_intensity: ctx.flash_intensity,
-            colon_blink: ctx.colon_blink,
-        };
+        let params = AsciiTextParams::from_ctx(ctx, ctx.color());
 
         // Render big ASCII timer
         render::render_ascii_text(frame, chunks[1], font, &time_str, &params);

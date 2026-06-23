@@ -5,9 +5,11 @@ use ratatui::{
     layout::{Alignment, Constraint, Layout, Rect},
     style::{Color, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, Paragraph},
+    widgets::{Clear, Paragraph},
 };
 use sigye_core::{AnimationSpeed, AnimationStyle, BackgroundStyle, ColorTheme, TimeFormat};
+
+use crate::dialog::{centered_rect, dialog_block};
 
 /// The settings field currently being edited.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -29,6 +31,26 @@ pub enum SettingsField {
     TimerDuration,
 }
 
+/// Common Pomodoro work durations cycled through in the settings dialog (minutes).
+const POMODORO_WORK_MINS: &[u32] = &[15, 20, 25, 30, 45, 50, 60];
+/// Common Pomodoro break durations cycled through in the settings dialog (minutes).
+const POMODORO_BREAK_MINS: &[u32] = &[3, 5, 10, 15];
+/// Common Pomodoro long break durations cycled through in the settings dialog (minutes).
+const POMODORO_LONG_BREAK_MINS: &[u32] = &[10, 15, 20, 30];
+
+/// Step `current` forward (`delta = 1`) or backward (`delta = -1`) through `values`
+/// with wraparound. If `current` isn't in `values`, fall back to `default`.
+fn cycle_value(values: &[u32], current: u32, delta: i32, default: u32) -> u32 {
+    match values.iter().position(|&v| v == current) {
+        Some(idx) => {
+            let len = values.len() as i32;
+            let next = (idx as i32 + delta).rem_euclid(len) as usize;
+            values[next]
+        }
+        None => default,
+    }
+}
+
 /// A row in the settings dialog layout.
 enum RowKind {
     Header(&'static str),
@@ -40,6 +62,25 @@ enum RowKind {
 struct DialogTextColors {
     dim: Color,
     muted: Color,
+}
+
+/// Snapshot of settings values taken when the dialog opens, used to revert on cancel.
+#[derive(Debug, Clone, Copy)]
+pub struct SettingsSnapshot {
+    pub font_index: usize,
+    pub color_theme: ColorTheme,
+    pub time_format: TimeFormat,
+    pub animation_style: AnimationStyle,
+    pub animation_speed: AnimationSpeed,
+    pub background_style: BackgroundStyle,
+    pub colon_blink: bool,
+    pub show_seconds: bool,
+    pub pomodoro_work_mins: u32,
+    pub pomodoro_break_mins: u32,
+    pub pomodoro_long_break_mins: u32,
+    pub pomodoro_sound: bool,
+    pub desktop_notifications: bool,
+    pub timer_duration_mins: u32,
 }
 
 /// Settings dialog state.
@@ -81,34 +122,8 @@ pub struct SettingsDialog {
     pub desktop_notifications: bool,
     /// Timer countdown duration in minutes.
     pub timer_duration_mins: u32,
-    /// Original font index (for cancel/revert).
-    original_font_index: usize,
-    /// Original color theme (for cancel/revert).
-    original_color_theme: ColorTheme,
-    /// Original time format (for cancel/revert).
-    original_time_format: TimeFormat,
-    /// Original animation style (for cancel/revert).
-    original_animation_style: AnimationStyle,
-    /// Original animation speed (for cancel/revert).
-    original_animation_speed: AnimationSpeed,
-    /// Original background style (for cancel/revert).
-    original_background_style: BackgroundStyle,
-    /// Original colon blink (for cancel/revert).
-    original_colon_blink: bool,
-    /// Original show seconds (for cancel/revert).
-    original_show_seconds: bool,
-    /// Original pomodoro work duration (for cancel/revert).
-    original_pomodoro_work_mins: u32,
-    /// Original pomodoro break duration (for cancel/revert).
-    original_pomodoro_break_mins: u32,
-    /// Original pomodoro long break duration (for cancel/revert).
-    original_pomodoro_long_break_mins: u32,
-    /// Original pomodoro sound (for cancel/revert).
-    original_pomodoro_sound: bool,
-    /// Original desktop notifications (for cancel/revert).
-    original_desktop_notifications: bool,
-    /// Original timer duration (for cancel/revert).
-    original_timer_duration_mins: u32,
+    /// Snapshot of values when the dialog opened (for cancel/revert).
+    original: SettingsSnapshot,
 }
 
 impl SettingsDialog {
@@ -133,20 +148,22 @@ impl SettingsDialog {
             pomodoro_sound: true,
             desktop_notifications: true,
             timer_duration_mins: 5,
-            original_font_index: 0,
-            original_color_theme: ColorTheme::default(),
-            original_time_format: TimeFormat::default(),
-            original_animation_style: AnimationStyle::default(),
-            original_animation_speed: AnimationSpeed::default(),
-            original_background_style: BackgroundStyle::default(),
-            original_colon_blink: false,
-            original_show_seconds: true,
-            original_pomodoro_work_mins: 25,
-            original_pomodoro_break_mins: 5,
-            original_pomodoro_long_break_mins: 15,
-            original_pomodoro_sound: true,
-            original_desktop_notifications: true,
-            original_timer_duration_mins: 5,
+            original: SettingsSnapshot {
+                font_index: 0,
+                color_theme: ColorTheme::default(),
+                time_format: TimeFormat::default(),
+                animation_style: AnimationStyle::default(),
+                animation_speed: AnimationSpeed::default(),
+                background_style: BackgroundStyle::default(),
+                colon_blink: false,
+                show_seconds: true,
+                pomodoro_work_mins: 25,
+                pomodoro_break_mins: 5,
+                pomodoro_long_break_mins: 15,
+                pomodoro_sound: true,
+                desktop_notifications: true,
+                timer_duration_mins: 5,
+            },
         }
     }
 
@@ -194,20 +211,22 @@ impl SettingsDialog {
             .unwrap_or(0);
 
         // Store original values for cancel/revert
-        self.original_font_index = self.font_index;
-        self.original_color_theme = color_theme;
-        self.original_time_format = time_format;
-        self.original_animation_style = animation_style;
-        self.original_animation_speed = animation_speed;
-        self.original_background_style = background_style;
-        self.original_colon_blink = colon_blink;
-        self.original_show_seconds = show_seconds;
-        self.original_pomodoro_work_mins = pomodoro_work_mins;
-        self.original_pomodoro_break_mins = pomodoro_break_mins;
-        self.original_pomodoro_long_break_mins = pomodoro_long_break_mins;
-        self.original_pomodoro_sound = pomodoro_sound;
-        self.original_desktop_notifications = desktop_notifications;
-        self.original_timer_duration_mins = timer_duration_mins;
+        self.original = SettingsSnapshot {
+            font_index: self.font_index,
+            color_theme,
+            time_format,
+            animation_style,
+            animation_speed,
+            background_style,
+            colon_blink,
+            show_seconds,
+            pomodoro_work_mins,
+            pomodoro_break_mins,
+            pomodoro_long_break_mins,
+            pomodoro_sound,
+            desktop_notifications,
+            timer_duration_mins,
+        };
     }
 
     /// Close without saving.
@@ -215,77 +234,17 @@ impl SettingsDialog {
         self.visible = false;
     }
 
+    /// Get the snapshot of values taken when the dialog opened (for reverting on cancel).
+    pub fn original(&self) -> &SettingsSnapshot {
+        &self.original
+    }
+
     /// Get original font name (for reverting on cancel).
     pub fn original_font(&self) -> &str {
         self.available_fonts
-            .get(self.original_font_index)
+            .get(self.original.font_index)
             .map(String::as_str)
             .unwrap_or("Standard")
-    }
-
-    /// Get original color theme (for reverting on cancel).
-    pub fn original_color_theme(&self) -> ColorTheme {
-        self.original_color_theme
-    }
-
-    /// Get original time format (for reverting on cancel).
-    pub fn original_time_format(&self) -> TimeFormat {
-        self.original_time_format
-    }
-
-    /// Get original animation style (for reverting on cancel).
-    pub fn original_animation_style(&self) -> AnimationStyle {
-        self.original_animation_style
-    }
-
-    /// Get original animation speed (for reverting on cancel).
-    pub fn original_animation_speed(&self) -> AnimationSpeed {
-        self.original_animation_speed
-    }
-
-    /// Get original colon blink (for reverting on cancel).
-    pub fn original_colon_blink(&self) -> bool {
-        self.original_colon_blink
-    }
-
-    /// Get original show seconds (for reverting on cancel).
-    pub fn original_show_seconds(&self) -> bool {
-        self.original_show_seconds
-    }
-
-    /// Get original background style (for reverting on cancel).
-    pub fn original_background_style(&self) -> BackgroundStyle {
-        self.original_background_style
-    }
-
-    /// Get original pomodoro work duration (for reverting on cancel).
-    pub fn original_pomodoro_work_mins(&self) -> u32 {
-        self.original_pomodoro_work_mins
-    }
-
-    /// Get original pomodoro break duration (for reverting on cancel).
-    pub fn original_pomodoro_break_mins(&self) -> u32 {
-        self.original_pomodoro_break_mins
-    }
-
-    /// Get original pomodoro long break duration (for reverting on cancel).
-    pub fn original_pomodoro_long_break_mins(&self) -> u32 {
-        self.original_pomodoro_long_break_mins
-    }
-
-    /// Get original pomodoro sound (for reverting on cancel).
-    pub fn original_pomodoro_sound(&self) -> bool {
-        self.original_pomodoro_sound
-    }
-
-    /// Get original desktop notifications (for reverting on cancel).
-    pub fn original_desktop_notifications(&self) -> bool {
-        self.original_desktop_notifications
-    }
-
-    /// Get original timer duration (for reverting on cancel).
-    pub fn original_timer_duration_mins(&self) -> u32 {
-        self.original_timer_duration_mins
     }
 
     /// Get settings fields in their visible section layout order.
@@ -398,33 +357,22 @@ impl SettingsDialog {
             }
             SettingsField::PomodoroWork => {
                 // Cycle through common work durations: 15, 20, 25, 30, 45, 50, 60
-                self.pomodoro_work_mins = match self.pomodoro_work_mins {
-                    15 => 20,
-                    20 => 25,
-                    25 => 30,
-                    30 => 45,
-                    45 => 50,
-                    50 => 60,
-                    _ => 15,
-                };
+                self.pomodoro_work_mins =
+                    cycle_value(POMODORO_WORK_MINS, self.pomodoro_work_mins, 1, 15);
             }
             SettingsField::PomodoroBreak => {
                 // Cycle through common break durations: 3, 5, 10, 15
-                self.pomodoro_break_mins = match self.pomodoro_break_mins {
-                    3 => 5,
-                    5 => 10,
-                    10 => 15,
-                    _ => 3,
-                };
+                self.pomodoro_break_mins =
+                    cycle_value(POMODORO_BREAK_MINS, self.pomodoro_break_mins, 1, 3);
             }
             SettingsField::PomodoroLongBreak => {
                 // Cycle through common long break durations: 10, 15, 20, 30
-                self.pomodoro_long_break_mins = match self.pomodoro_long_break_mins {
-                    10 => 15,
-                    15 => 20,
-                    20 => 30,
-                    _ => 10,
-                };
+                self.pomodoro_long_break_mins = cycle_value(
+                    POMODORO_LONG_BREAK_MINS,
+                    self.pomodoro_long_break_mins,
+                    1,
+                    10,
+                );
             }
             SettingsField::PomodoroSound => {
                 self.pomodoro_sound = !self.pomodoro_sound;
@@ -473,36 +421,22 @@ impl SettingsDialog {
             }
             SettingsField::PomodoroWork => {
                 // Cycle through common work durations (reverse): 60, 50, 45, 30, 25, 20, 15
-                self.pomodoro_work_mins = match self.pomodoro_work_mins {
-                    15 => 60,
-                    20 => 15,
-                    25 => 20,
-                    30 => 25,
-                    45 => 30,
-                    50 => 45,
-                    60 => 50,
-                    _ => 25,
-                };
+                self.pomodoro_work_mins =
+                    cycle_value(POMODORO_WORK_MINS, self.pomodoro_work_mins, -1, 25);
             }
             SettingsField::PomodoroBreak => {
                 // Cycle through common break durations (reverse): 15, 10, 5, 3
-                self.pomodoro_break_mins = match self.pomodoro_break_mins {
-                    3 => 15,
-                    5 => 3,
-                    10 => 5,
-                    15 => 10,
-                    _ => 5,
-                };
+                self.pomodoro_break_mins =
+                    cycle_value(POMODORO_BREAK_MINS, self.pomodoro_break_mins, -1, 5);
             }
             SettingsField::PomodoroLongBreak => {
                 // Cycle through common long break durations (reverse): 30, 20, 15, 10
-                self.pomodoro_long_break_mins = match self.pomodoro_long_break_mins {
-                    10 => 30,
-                    15 => 10,
-                    20 => 15,
-                    30 => 20,
-                    _ => 15,
-                };
+                self.pomodoro_long_break_mins = cycle_value(
+                    POMODORO_LONG_BREAK_MINS,
+                    self.pomodoro_long_break_mins,
+                    -1,
+                    15,
+                );
             }
             SettingsField::PomodoroSound => {
                 self.pomodoro_sound = !self.pomodoro_sound;
@@ -546,20 +480,13 @@ impl SettingsDialog {
         // +5 for: border top/bottom (2) + help row (1) + top padding (1) + bottom padding (1)
         let dialog_height = (total_content_rows + 5).min(area.height.saturating_sub(2));
 
-        let dialog_x = area.x + (area.width.saturating_sub(dialog_width)) / 2;
-        let dialog_y = area.y + (area.height.saturating_sub(dialog_height)) / 2;
-        let dialog_area = Rect::new(dialog_x, dialog_y, dialog_width, dialog_height);
+        let dialog_area = centered_rect(area, dialog_width, dialog_height);
 
         // Clear the area behind the dialog
         frame.render_widget(Clear, dialog_area);
 
         // Create block with border and explicit colors for light theme support
-        let block = Block::default()
-            .title(" Settings ")
-            .title_alignment(Alignment::Center)
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(accent_color))
-            .style(Style::default().fg(Color::White).bg(Color::Black));
+        let block = dialog_block(" Settings ", accent_color);
 
         let inner_area = block.inner(dialog_area);
         frame.render_widget(block, dialog_area);
@@ -829,6 +756,7 @@ impl SettingsDialog {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dialog::test_helpers::color_of_text;
     use ratatui::{Terminal, backend::TestBackend};
 
     #[test]
@@ -866,27 +794,6 @@ mod tests {
         assert_eq!(color_of_text(backend, "Cyan"), Some(Color::White));
     }
 
-    fn color_of_text(backend: &TestBackend, text: &str) -> Option<Color> {
-        let buffer = backend.buffer();
-        let area = buffer.area;
-        for y in area.top()..area.bottom() {
-            for x in area.left()..area.right() {
-                if text_matches_at(backend, x, y, text) {
-                    return buffer.cell((x, y)).map(|cell| cell.fg);
-                }
-            }
-        }
-        None
-    }
-
-    fn text_matches_at(backend: &TestBackend, x: u16, y: u16, text: &str) -> bool {
-        let buffer = backend.buffer();
-        text.chars().enumerate().all(|(offset, ch)| {
-            buffer
-                .cell((x + offset as u16, y))
-                .is_some_and(|cell| cell.symbol() == ch.to_string())
-        })
-    }
     fn dialog_at(field: SettingsField) -> SettingsDialog {
         let mut dialog = SettingsDialog::new(vec![String::from("Standard")]);
         dialog.selected_field = field;

@@ -99,15 +99,7 @@ impl Mode for WorldClockMode {
 
         let now_utc = Utc::now();
 
-        let params = AsciiTextParams {
-            color_theme: ctx.color_theme,
-            static_color: ctx.color(),
-            animation_style: ctx.animation_style,
-            animation_speed: ctx.animation_speed,
-            elapsed_ms: ctx.elapsed_ms(),
-            flash_intensity: ctx.flash_intensity,
-            colon_blink: ctx.colon_blink,
-        };
+        let params = AsciiTextParams::from_ctx(ctx, ctx.color());
 
         for (i, (label, tz_str)) in self.entries.iter().enumerate() {
             let chunk_idx = 1 + i; // offset by the leading Fill(1)

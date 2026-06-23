@@ -285,15 +285,7 @@ impl Mode for ClockMode {
             }
         };
 
-        let params = AsciiTextParams {
-            color_theme: ctx.color_theme,
-            static_color: ctx.color(),
-            animation_style: ctx.animation_style,
-            animation_speed: ctx.animation_speed,
-            elapsed_ms: ctx.elapsed_ms(),
-            flash_intensity: ctx.flash_intensity,
-            colon_blink: ctx.colon_blink,
-        };
+        let params = AsciiTextParams::from_ctx(ctx, ctx.color());
 
         // Render big ASCII time
         render::render_ascii_text(frame, chunks[1], font, &big_text, &params);

@@ -1936,7 +1936,6 @@ dependencies = [
  "notify-rust",
  "ratatui",
  "serde",
- "serde_json",
  "sigye-background",
  "sigye-config",
  "sigye-core",

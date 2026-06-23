@@ -6,10 +6,11 @@ use ratatui::{
     layout::{Alignment, Constraint, Layout, Rect},
     style::{Color, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, Paragraph},
+    widgets::{Clear, Paragraph},
 };
 use sigye_config::CountdownEvent;
 
+use crate::dialog::{centered_rect, dialog_block, inset};
 use crate::modes::countdown::validate_target;
 
 /// Dialog outcome surfaced to the App's key handler.
@@ -308,12 +309,7 @@ impl CountdownDialog {
         let dialog_area = centered_rect(area, dialog_width, dialog_height);
         frame.render_widget(Clear, dialog_area);
 
-        let block = Block::default()
-            .title(" Countdown Events ")
-            .title_alignment(Alignment::Center)
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(accent))
-            .style(Style::default().fg(Color::White).bg(Color::Black));
+        let block = dialog_block(" Countdown Events ", accent);
         let inner = block.inner(dialog_area);
         frame.render_widget(block, dialog_area);
 
@@ -400,12 +396,7 @@ impl CountdownDialog {
         } else {
             " Add Event "
         };
-        let block = Block::default()
-            .title(title)
-            .title_alignment(Alignment::Center)
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(accent))
-            .style(Style::default().fg(Color::White).bg(Color::Black));
+        let block = dialog_block(title, accent);
         let inner = block.inner(dialog_area);
         frame.render_widget(block, dialog_area);
 
@@ -540,24 +531,10 @@ impl CountdownDialog {
     }
 }
 
-fn centered_rect(area: Rect, width: u16, height: u16) -> Rect {
-    let x = area.x + (area.width.saturating_sub(width)) / 2;
-    let y = area.y + (area.height.saturating_sub(height)) / 2;
-    Rect::new(x, y, width, height)
-}
-
-fn inset(area: Rect, padding: u16) -> Rect {
-    Rect::new(
-        area.x + padding,
-        area.y,
-        area.width.saturating_sub(padding * 2),
-        area.height,
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dialog::test_helpers::color_of_text;
     use crossterm::event::{KeyEventKind, KeyEventState, KeyModifiers};
     use ratatui::{Terminal, backend::TestBackend};
 
@@ -753,27 +730,5 @@ mod tests {
         assert_eq!(color_of_text(backend, "e.g. 2026-06-01"), Some(dim));
         assert_eq!(color_of_text(backend, "Launch"), Some(Color::White));
         assert_eq!(color_of_text(backend, " field  "), Some(muted));
-    }
-
-    fn color_of_text(backend: &TestBackend, text: &str) -> Option<Color> {
-        let buffer = backend.buffer();
-        let area = buffer.area;
-        for y in area.top()..area.bottom() {
-            for x in area.left()..area.right() {
-                if text_matches_at(backend, x, y, text) {
-                    return buffer.cell((x, y)).map(|cell| cell.fg);
-                }
-            }
-        }
-        None
-    }
-
-    fn text_matches_at(backend: &TestBackend, x: u16, y: u16, text: &str) -> bool {
-        let buffer = backend.buffer();
-        text.chars().enumerate().all(|(offset, ch)| {
-            buffer
-                .cell((x + offset as u16, y))
-                .is_some_and(|cell| cell.symbol() == ch.to_string())
-        })
     }
 }

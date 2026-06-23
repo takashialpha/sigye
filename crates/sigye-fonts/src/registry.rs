@@ -80,11 +80,6 @@ impl FontRegistry {
         }
     }
 
-    /// Get a font by name.
-    pub fn get(&self, name: &str) -> Option<&Font> {
-        self.fonts.get(name)
-    }
-
     /// Get a font by name, or the default font if not found.
     pub fn get_or_default(&self, name: &str) -> &Font {
         self.fonts
@@ -98,21 +93,6 @@ impl FontRegistry {
         let mut names: Vec<&str> = self.fonts.keys().map(|s| s.as_str()).collect();
         names.sort();
         names
-    }
-
-    /// Check if a font exists.
-    pub fn has_font(&self, name: &str) -> bool {
-        self.fonts.contains_key(name)
-    }
-
-    /// Get the number of loaded fonts.
-    pub fn len(&self) -> usize {
-        self.fonts.len()
-    }
-
-    /// Check if the registry is empty.
-    pub fn is_empty(&self) -> bool {
-        self.fonts.is_empty()
     }
 }
 
