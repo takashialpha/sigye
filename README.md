@@ -57,6 +57,14 @@ A feature-rich terminal clock with ASCII art fonts, animated backgrounds, and pr
 
 ## Installation
 
+### Homebrew (macOS / Linux)
+
+```bash
+brew install am2rican5/sigye/sigye
+```
+
+Installs a prebuilt binary — no Rust toolchain required.
+
 ### Pre-built binaries
 
 Download pre-built binaries from the [GitHub Releases](https://github.com/am2rican5/sigye/releases) page.
