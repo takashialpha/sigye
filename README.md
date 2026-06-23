@@ -21,7 +21,7 @@ A feature-rich terminal clock with ASCII art fonts, animated backgrounds, and pr
 - **21 animated backgrounds** — Starfield, matrix rain, weather effects, cherry blossoms, twilight, and system-reactive visuals
 - **Desktop notifications** — Alerts for Pomodoro phase changes and timer completion
 - **Live weather backgrounds** — Auto-selects rain, snow, fog, or sun based on real conditions via wttr.in
-- **System-reactive backgrounds** — CPU, memory, network, and disk metrics drive visual effects
+- **System-reactive backgrounds** — CPU, memory, and network metrics drive visual effects
 - **World Clock** — Display multiple timezones simultaneously
 - **CLI arguments** — Launch directly into any mode, theme, font, or background
 - **Screensaver and demo modes** — Fullscreen ambient display or auto-cycling showcase
@@ -310,7 +310,7 @@ Cyan, Green, White, Magenta, Yellow, Red, Blue
 
 ### System-Reactive
 
-Driven by real-time system metrics (CPU, memory, network, disk):
+Driven by real-time system metrics (CPU, memory, network):
 
 | Style | Description |
 |-------|-------------|
