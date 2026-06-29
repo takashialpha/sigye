@@ -1,5 +1,5 @@
 [workspace]
-resolver = "2"
+resolver = "3"
 members = ["crates/*"]
 
 [workspace.package]
@@ -12,14 +12,19 @@ homepage = "https://github.com/am2rican5/sigye"
 readme = "README.md"
 
 [workspace.dependencies]
-ratatui = { version = "0.30.0", default-features = false, features = ["crossterm"] }
+ratatui = { version = "0.30.2", default-features = false, features = [
+  "crossterm",
+] }
 crossterm = "0.29"
 chrono = "0.4"
 color-eyre = "0.6"
 serde = { version = "1.0", features = ["derive"] }
-toml = "1.0"
+toml = "1.1"
 directories = "6.0"
-sysinfo = { version = "0.38", default-features = false, features = ["network", "system"] }
+sysinfo = { version = "0.39", default-features = false, features = [
+  "network",
+  "system",
+] }
 ureq = { version = "3.3", features = ["json"] }
 notify-rust = "4"
 chrono-tz = "0.10"
