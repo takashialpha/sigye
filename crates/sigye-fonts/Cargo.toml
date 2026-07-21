@@ -7,3 +7,9 @@ license.workspace = true
 edition.workspace = true
 repository.workspace = true
 homepage.workspace = true
+readme.workspace = true
+keywords = ["ascii-art", "figlet", "fonts", "terminal", "tui"]
+categories = ["command-line-utilities", "text-processing"]
+
+[lints]
+workspace = true
