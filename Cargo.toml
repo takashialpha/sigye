@@ -7,6 +7,7 @@ version = "0.5.0"
 authors = ["am2rican5 <am2rican5@gmail.com>"]
 license = "MIT"
 edition = "2024"
+rust-version = "1.97.1"
 repository = "https://github.com/am2rican5/sigye"
 homepage = "https://github.com/am2rican5/sigye"
 readme = "README.md"
